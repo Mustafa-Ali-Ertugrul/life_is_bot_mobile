@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'config.dart';
 import '../models/habit.dart';
+import '../models/medication.dart';
 
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
@@ -57,6 +58,44 @@ class ApiClient {
     } catch (e) {
       debugPrint('❌ Error fetching medications: $e');
       return [];
+    }
+  }
+
+  /// İlaç ekle
+  Future<Medication?> createMedication(Medication medication) async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('${AppConfig.baseUrl}/medications'),
+            headers: _headers,
+            body: jsonEncode(medication.toJson()),
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return Medication.fromJson(jsonDecode(response.body));
+      }
+      return null;
+    } catch (e) {
+      debugPrint('❌ Error creating medication: $e');
+      return null;
+    }
+  }
+
+  /// İlaç sil
+  Future<bool> deleteMedication(int id) async {
+    try {
+      final response = await _client
+          .delete(
+            Uri.parse('${AppConfig.baseUrl}/medications/$id'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      debugPrint('❌ Error deleting medication: $e');
+      return false;
     }
   }
 

@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../models/habit.dart';
+import '../services/notification_service.dart';
 
 class HabitsScreen extends StatefulWidget {
   const HabitsScreen({super.key});
@@ -108,6 +109,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
 
                 final created = await _api.createHabit(habit);
                 if (created != null) {
+                  await NotificationService.scheduleHabitReminder(habit: created);
                   if (context.mounted) Navigator.pop(context);
                   await _loadHabits();
                 }
@@ -165,6 +167,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
     );
 
     if (confirmed == true) {
+      await NotificationService.cancelHabitReminders(habit.id, habit.days);
       await _api.deleteHabit(habit.id);
       await _loadHabits();
     }
@@ -187,7 +190,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
           : _habits.isEmpty
               ? Center(
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(Icons.check_circle_outline, size: 64, color: Colors.grey),
                       const SizedBox(height: 16),

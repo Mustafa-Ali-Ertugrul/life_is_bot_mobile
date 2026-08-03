@@ -1,7 +1,19 @@
 import 'package:flutter/material.dart';
 import 'screens/home_screen.dart';
+import 'services/notification_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Bildirim servisini başlat
+  await NotificationService.init();
+
+  // Bildirim izni iste
+  await NotificationService.requestPermission();
+
+  // Adım hatırlatmasını zamanla
+  await NotificationService.scheduleStepReminder();
+
   runApp(const MyApp());
 }
 
