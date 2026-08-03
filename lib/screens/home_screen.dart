@@ -14,7 +14,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final DatabaseService _db = DatabaseService();
 
   int _todaySteps = 0;
-  int _stepGoal = 10000;
+  final int _stepGoal = 10000;
   bool _loading = true;
   bool _googleFitAvailable = false;
 

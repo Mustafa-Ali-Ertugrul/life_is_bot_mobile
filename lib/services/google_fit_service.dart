@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:health/health.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../core/database.dart';
@@ -18,7 +19,7 @@ class GoogleFitService {
       _initialized = true;
       return true;
     } catch (e) {
-      print('Health init error: $e');
+      debugPrint('Health init error: $e');
       return false;
     }
   }
@@ -49,7 +50,7 @@ class GoogleFitService {
       final steps = await _health.getTotalStepsInInterval(startOfDay, now);
       return steps ?? 0;
     } catch (e) {
-      print('Error fetching steps: $e');
+      debugPrint('Error fetching steps: $e');
       return 0;
     }
   }
@@ -70,7 +71,7 @@ class GoogleFitService {
         final steps = await _health.getTotalStepsInInterval(startOfDay, endOfDay);
         stepsMap[startOfDay] = steps ?? 0;
       } catch (e) {
-        print('Error fetching steps for $date: $e');
+        debugPrint('Error fetching steps for $date: $e');
         stepsMap[startOfDay] = 0;
       }
     }
@@ -90,6 +91,6 @@ class GoogleFitService {
       source: 'google_fit',
     );
 
-    print('Synced $steps steps for ${today.toString().split(' ')[0]}');
+    debugPrint('Synced $steps steps for ${today.toString().split(' ')[0]}');
   }
 }
