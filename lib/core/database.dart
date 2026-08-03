@@ -2,21 +2,22 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
 class DatabaseService {
-  // Singleton pattern
-  static final DatabaseService _instance = DatabaseService._internal();
-  factory DatabaseService() => _instance;
-  DatabaseService._internal();
-
   static Database? _database;
 
-  static Future<Database> get instance async {
-    if (_database != null) return _database!;
+  // Private constructor (singleton pattern)
+  DatabaseService._internal();
+  static final DatabaseService instance = DatabaseService._internal();
 
+  // Factory for easy access
+  factory DatabaseService() => instance;
+
+  Future<Database> get database async {
+    if (_database != null) return _database!;
     _database = await _initDatabase();
     return _database!;
   }
 
-  static Future<Database> _initDatabase() async {
+  Future<Database> _initDatabase() async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'life_is_bot.db');
 
@@ -38,14 +39,12 @@ class DatabaseService {
     );
   }
 
-  /// Adımları kaydet
   Future<void> saveSteps({
     required int steps,
     required DateTime date,
-    String source = 'health_api',
+    String source = 'google_fit',
   }) async {
-    final db = await instance;
-
+    final db = await database;
     await db.insert(
       'step_logs',
       {
@@ -58,9 +57,8 @@ class DatabaseService {
     );
   }
 
-  /// Bugünkü adımları al
   Future<int> getTodaySteps() async {
-    final db = await instance;
+    final db = await database;
     final today = DateTime.now().toIso8601String().split('T')[0];
 
     final results = await db.query(
@@ -73,9 +71,8 @@ class DatabaseService {
     return results.first['steps'] as int;
   }
 
-  /// Son 7 günün adımlarını al
   Future<Map<DateTime, int>> getWeeklySteps() async {
-    final db = await instance;
+    final db = await database;
     final now = DateTime.now();
     final startDate = now.subtract(Duration(days: 6));
 

@@ -153,7 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Google Fit yüklü değil. Emulator\'da test edilemez.',
+                        "Google Fit yüklü değil. Emulator'da test edilemez.",
                         style: TextStyle(fontSize: 12),
                       ),
                     ),
