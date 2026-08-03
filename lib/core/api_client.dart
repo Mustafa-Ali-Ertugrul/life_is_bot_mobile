@@ -204,6 +204,24 @@ class ApiClient {
     }
   }
 
+  /// Adım hedefini güncelle
+  Future<bool> updateStepGoal(int goal) async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('${AppConfig.baseUrl}/steps/settings'),
+            headers: _headers,
+            body: jsonEncode({'daily_goal': goal}),
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      debugPrint('❌ Error updating step goal: $e');
+      return false;
+    }
+  }
+
   /// Günlük rapor
   Future<Map<String, dynamic>?> getDailyReport() async {
     try {

@@ -6,6 +6,7 @@ import 'habits_screen.dart';
 import 'medications_screen.dart';
 import 'steps_screen.dart';
 import 'reports_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -115,6 +116,16 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
             tooltip: 'Raporlar',
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
+              ).then((_) => _loadBackendData());
+            },
+            tooltip: 'Ayarlar',
           ),
           // Backend bağlantı durumu
           IconButton(
