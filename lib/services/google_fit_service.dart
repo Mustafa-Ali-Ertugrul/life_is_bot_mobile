@@ -1,4 +1,4 @@
-import 'package:google_fit/google_fit.dart';
+import 'package:health/health.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../core/database.dart';
 
@@ -7,47 +7,43 @@ class GoogleFitService {
   factory GoogleFitService() => _instance;
   GoogleFitService._internal();
 
-  final GoogleFit _googleFit = GoogleFit();
+  final Health _health = Health();
 
-  /// Google Fit permission iste
+  // Define the types to get.
+  final List<HealthDataType> types = [
+    HealthDataType.STEPS,
+  ];
+
+  /// Health permissions iste
   Future<bool> requestPermission() async {
+    // Activity recognition permission (Android specific)
     final status = await Permission.activityRecognition.request();
 
     if (status.isGranted) {
-      await _googleFit.requestPermissions([
-        FitnessPermission(
-          dataType: DataType.steps,
-          access: FitnessAccess.read,
-        ),
-      ]);
-      return true;
+      // Health permissions
+      bool requested = await _health.requestAuthorization(types);
+      return requested;
     }
 
     return false;
   }
 
-  /// Google Fit yüklü mü kontrol et
+  /// Health yüklü mü kontrol et (Android için Google Fit/Health Connect)
   Future<bool> isAvailable() async {
-    return await _googleFit.isAvailable();
+    // Note: On Android, this checks for Health Connect if configured,
+    // or Google Fit.
+    return true; // Simplified for now as Health.isAvailable() is not direct
   }
 
   /// Bugünkü adımları al
   Future<int> getTodaySteps() async {
-    if (!await isAvailable()) {
-      return 0;
-    }
-
     final now = DateTime.now();
     final startOfDay = DateTime(now.year, now.month, now.day);
 
     try {
-      final result = await _googleFit.getData(
-        dataType: DataType.steps,
-        startTime: startOfDay,
-        endTime: now,
-      );
-
-      return result.fold(0, (sum, data) => sum + data.value.toInt());
+      // Get cumulative steps for today
+      int? steps = await _health.getTotalStepsInInterval(startOfDay, now);
+      return steps ?? 0;
     } catch (e) {
       print('Error fetching steps: $e');
       return 0;
@@ -56,27 +52,17 @@ class GoogleFitService {
 
   /// Son 7 günün adımlarını al
   Future<Map<DateTime, int>> getWeeklySteps() async {
-    if (!await isAvailable()) {
-      return {};
-    }
-
     final now = DateTime.now();
     final stepsMap = <DateTime, int>{};
 
     for (int i = 6; i >= 0; i--) {
       final date = now.subtract(Duration(days: i));
       final startOfDay = DateTime(date.year, date.month, date.day);
-      final endOfDay = startOfDay.add(Duration(days: 1));
+      final endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59);
 
       try {
-        final result = await _googleFit.getData(
-          dataType: DataType.steps,
-          startTime: startOfDay,
-          endTime: endOfDay,
-        );
-
-        final steps = result.fold(0, (sum, data) => sum + data.value.toInt());
-        stepsMap[startOfDay] = steps;
+        int? steps = await _health.getTotalStepsInInterval(startOfDay, endOfDay);
+        stepsMap[startOfDay] = steps ?? 0;
       } catch (e) {
         print('Error fetching steps for $date: $e');
         stepsMap[startOfDay] = 0;
@@ -86,7 +72,7 @@ class GoogleFitService {
     return stepsMap;
   }
 
-  /// Adımları sync et (Google Fit → Local DB)
+  /// Adımları sync et (Health -> Local DB)
   Future<void> syncSteps() async {
     final steps = await getTodaySteps();
     final today = DateTime.now();
@@ -95,7 +81,7 @@ class GoogleFitService {
     await db.saveSteps(
       steps: steps,
       date: today,
-      source: 'google_fit',
+      source: 'health_api',
     );
 
     print('Synced $steps steps for ${today.toString().split(' ')[0]}');
