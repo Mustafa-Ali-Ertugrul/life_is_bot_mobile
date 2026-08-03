@@ -5,6 +5,7 @@ import '../core/api_client.dart';
 import 'habits_screen.dart';
 import 'medications_screen.dart';
 import 'steps_screen.dart';
+import 'reports_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -104,6 +105,17 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Life Is Bot'),
         backgroundColor: Colors.teal,
         actions: [
+          // Raporlar butonu
+          IconButton(
+            icon: const Icon(Icons.bar_chart),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ReportsScreen()),
+              );
+            },
+            tooltip: 'Raporlar',
+          ),
           // Backend bağlantı durumu
           IconButton(
             icon: Icon(
@@ -267,7 +279,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ? '$_medicationCount ilaç kayıtlı'
             : 'Backend bağlı değil'),
         trailing: _backendConnected
-            ? const Icon(Icons.chevron_right)
+            ? const Icon(Icons.check_circle, color: Colors.green)
             : const Icon(Icons.cloud_off, color: Colors.grey),
         onTap: () {
           Navigator.push(

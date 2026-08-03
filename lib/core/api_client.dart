@@ -224,6 +224,46 @@ class ApiClient {
     }
   }
 
+  /// Haftalık rapor
+  Future<Map<String, dynamic>?> getWeeklyReport() async {
+    try {
+      final response = await _client
+          .get(
+            Uri.parse('${AppConfig.baseUrl}/reports/weekly'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('❌ Error fetching weekly report: $e');
+      return null;
+    }
+  }
+
+  /// Aylık rapor
+  Future<Map<String, dynamic>?> getMonthlyReport() async {
+    try {
+      final response = await _client
+          .get(
+            Uri.parse('${AppConfig.baseUrl}/reports/monthly'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('❌ Error fetching monthly report: $e');
+      return null;
+    }
+  }
+
   /// Streak bilgisi
   Future<Map<String, dynamic>?> getStreak() async {
     try {
