@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/google_fit_service.dart';
 import '../core/database.dart';
+import '../core/api_client.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,36 +13,65 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final GoogleFitService _googleFit = GoogleFitService();
   final DatabaseService _db = DatabaseService();
+  final ApiClient _api = ApiClient();
 
   int _todaySteps = 0;
-  final int _stepGoal = 10000;
+  int _stepGoal = 10000;
   bool _loading = true;
   bool _googleFitAvailable = false;
+  bool _backendConnected = false;
+  int _medicationCount = 0;
+  int _habitCount = 0;
+  int _currentStreak = 0;
 
   @override
   void initState() {
     super.initState();
-    _initGoogleFit();
+    _initData();
+  }
+
+  Future<void> _initData() async {
+    setState(() => _loading = true);
+    await _initGoogleFit();
+    await _loadBackendData();
+    setState(() => _loading = false);
   }
 
   Future<void> _initGoogleFit() async {
-    setState(() => _loading = true);
-
-    // Google Fit yüklü mü?
     _googleFitAvailable = await _googleFit.isAvailable();
 
     if (_googleFitAvailable) {
-      // Permission iste
       await _googleFit.requestPermission();
-
-      // Bugünkü adımları al
       await _refreshSteps();
     } else {
-      // Local DB'den al
       _todaySteps = await _db.getTodaySteps();
     }
+  }
 
-    setState(() => _loading = false);
+  Future<void> _loadBackendData() async {
+    // Backend bağlı mı?
+    _backendConnected = await _api.checkHealth();
+
+    if (_backendConnected) {
+      // İlaç ve rutin sayılarını al
+      final meds = await _api.getMedications();
+      final habits = await _api.getHabits();
+
+      // Streak bilgisini al
+      final streak = await _api.getStreak();
+
+      // Adım hedefini al
+      final goal = await _api.getStepGoal();
+
+      if (mounted) {
+        setState(() {
+          _medicationCount = meds.length;
+          _habitCount = habits.length;
+          _currentStreak = streak?['current'] ?? 0;
+          _stepGoal = goal;
+        });
+      }
+    }
   }
 
   Future<void> _refreshSteps() async {
@@ -50,9 +80,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final steps = await _googleFit.getTodaySteps();
     await _db.saveSteps(steps: steps, date: DateTime.now());
 
-    setState(() {
-      _todaySteps = steps;
-    });
+    if (mounted) {
+      setState(() {
+        _todaySteps = steps;
+      });
+    }
+
+    // Backend'e gönder
+    if (_backendConnected) {
+      await _api.postSteps(steps, DateTime.now());
+    }
   }
 
   double get _progress => (_todaySteps / _stepGoal).clamp(0.0, 1.0);
@@ -64,20 +101,37 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Life Is Bot'),
         backgroundColor: Colors.teal,
         actions: [
+          // Backend bağlantı durumu
+          IconButton(
+            icon: Icon(
+              _backendConnected ? Icons.cloud_done : Icons.cloud_off,
+              color: _backendConnected ? Colors.green : Colors.grey,
+            ),
+            onPressed: _loadBackendData,
+            tooltip: _backendConnected ? 'Backend bağlı' : 'Backend bağlı değil',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _refreshSteps,
+            onPressed: () async {
+              await _refreshSteps();
+              await _loadBackendData();
+            },
           ),
         ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
-              onRefresh: _refreshSteps,
+              onRefresh: () async {
+                await _refreshSteps();
+                await _loadBackendData();
+              },
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
                   _buildStepCard(),
+                  const SizedBox(height: 16),
+                  _buildStreakCard(),
                   const SizedBox(height: 16),
                   _buildMedicationCard(),
                   const SizedBox(height: 16),
@@ -166,6 +220,24 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildStreakCard() {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.local_fire_department, color: Colors.orange, size: 40),
+        title: const Text(
+          'Seri',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(_backendConnected
+            ? '$_currentStreak gün ardışık tamamlama'
+            : 'Backend bağlı değil'),
+        trailing: _backendConnected
+            ? const Icon(Icons.check_circle, color: Colors.green)
+            : const Icon(Icons.cloud_off, color: Colors.grey),
+      ),
+    );
+  }
+
   Widget _buildMedicationCard() {
     return Card(
       child: ListTile(
@@ -174,8 +246,12 @@ class _HomeScreenState extends State<HomeScreen> {
           'İlaç Takibi',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
-        subtitle: const Text('2 ilaç bugün alınacak'),
-        trailing: const Icon(Icons.chevron_right),
+        subtitle: Text(_backendConnected
+            ? '$_medicationCount ilaç kayıtlı'
+            : 'Backend bağlı değil'),
+        trailing: _backendConnected
+            ? const Icon(Icons.check_circle, color: Colors.green)
+            : const Icon(Icons.cloud_off, color: Colors.grey),
         onTap: () {
           // TODO: Navigate to medications screen
         },
@@ -191,8 +267,12 @@ class _HomeScreenState extends State<HomeScreen> {
           'Rutin Takibi',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
-        subtitle: const Text('3/5 rutin tamamlandı'),
-        trailing: const Icon(Icons.chevron_right),
+        subtitle: Text(_backendConnected
+            ? '$_habitCount rutin kayıtlı'
+            : 'Backend bağlı değil'),
+        trailing: _backendConnected
+            ? const Icon(Icons.check_circle, color: Colors.green)
+            : const Icon(Icons.cloud_off, color: Colors.grey),
         onTap: () {
           // TODO: Navigate to habits screen
         },
