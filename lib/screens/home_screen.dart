@@ -4,6 +4,7 @@ import '../core/database.dart';
 import '../core/api_client.dart';
 import 'habits_screen.dart';
 import 'medications_screen.dart';
+import 'steps_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -147,76 +148,90 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildStepCard() {
     return Card(
       elevation: 4,
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            const Text(
-              '🚶 Bugünkü Adımlar',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: 150,
-              height: 150,
-              child: Stack(
-                alignment: Alignment.center,
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const StepsScreen()),
+          ).then((_) => _refreshSteps());
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              const Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  CircularProgressIndicator(
-                    value: _progress,
-                    strokeWidth: 12,
-                    backgroundColor: Colors.grey[300],
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      _progress >= 1.0 ? Colors.green : Colors.teal,
+                  Text(
+                    '🚶 Bugünkü Adımlar',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '$_todaySteps',
-                        style: const TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        '/ $_stepGoal',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
+                  Icon(Icons.chevron_right, color: Colors.grey),
                 ],
               ),
-            ),
-            const SizedBox(height: 16),
-            if (!_googleFitAvailable)
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orange[100],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Row(
+              const SizedBox(height: 24),
+              SizedBox(
+                width: 150,
+                height: 150,
+                child: Stack(
+                  alignment: Alignment.center,
                   children: [
-                    Icon(Icons.warning, color: Colors.orange, size: 20),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        "Google Fit yüklü değil. Emulator'da test edilemez.",
-                        style: TextStyle(fontSize: 12),
+                    CircularProgressIndicator(
+                      value: _progress,
+                      strokeWidth: 12,
+                      backgroundColor: Colors.grey[300],
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        _progress >= 1.0 ? Colors.green : Colors.teal,
                       ),
+                    ),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '$_todaySteps',
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          '/ $_stepGoal',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
-          ],
+              const SizedBox(height: 16),
+              if (!_googleFitAvailable)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange[100],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.warning, color: Colors.orange, size: 20),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          "Google Fit yüklü değil. Emulator'da test edilemez.",
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
