@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/google_fit_service.dart';
 import '../core/database.dart';
 import '../core/api_client.dart';
+import 'habits_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -271,10 +272,13 @@ class _HomeScreenState extends State<HomeScreen> {
             ? '$_habitCount rutin kayıtlı'
             : 'Backend bağlı değil'),
         trailing: _backendConnected
-            ? const Icon(Icons.check_circle, color: Colors.green)
+            ? const Icon(Icons.chevron_right)
             : const Icon(Icons.cloud_off, color: Colors.grey),
         onTap: () {
-          // TODO: Navigate to habits screen
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const HabitsScreen()),
+          ).then((_) => _loadBackendData());
         },
       ),
     );

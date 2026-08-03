@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'config.dart';
+import '../models/habit.dart';
 
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
@@ -81,6 +82,65 @@ class ApiClient {
     } catch (e) {
       debugPrint('❌ Error fetching habits: $e');
       return [];
+    }
+  }
+
+  /// Rutin ekle
+  Future<Habit?> createHabit(Habit habit) async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('${AppConfig.baseUrl}/habits'),
+            headers: _headers,
+            body: jsonEncode(habit.toJson()),
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return Habit.fromJson(jsonDecode(response.body));
+      }
+      return null;
+    } catch (e) {
+      debugPrint('❌ Error creating habit: $e');
+      return null;
+    }
+  }
+
+  /// Rutin güncelle
+  Future<Habit?> updateHabit(int id, Habit habit) async {
+    try {
+      final response = await _client
+          .put(
+            Uri.parse('${AppConfig.baseUrl}/habits/$id'),
+            headers: _headers,
+            body: jsonEncode(habit.toJson()),
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      if (response.statusCode == 200) {
+        return Habit.fromJson(jsonDecode(response.body));
+      }
+      return null;
+    } catch (e) {
+      debugPrint('❌ Error updating habit: $e');
+      return null;
+    }
+  }
+
+  /// Rutin sil
+  Future<bool> deleteHabit(int id) async {
+    try {
+      final response = await _client
+          .delete(
+            Uri.parse('${AppConfig.baseUrl}/habits/$id'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      debugPrint('❌ Error deleting habit: $e');
+      return false;
     }
   }
 
