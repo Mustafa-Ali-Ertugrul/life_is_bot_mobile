@@ -2,6 +2,11 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
 class DatabaseService {
+  // Singleton pattern
+  static final DatabaseService _instance = DatabaseService._internal();
+  factory DatabaseService() => _instance;
+  DatabaseService._internal();
+
   static Database? _database;
 
   static Future<Database> get instance async {
@@ -37,7 +42,7 @@ class DatabaseService {
   Future<void> saveSteps({
     required int steps,
     required DateTime date,
-    String source = 'google_fit',
+    String source = 'health_api',
   }) async {
     final db = await instance;
 
