@@ -7,6 +7,20 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.health.READ_STEPS" />
     <uses-permission android:name="android.permission.health.WRITE_STEPS" />
+    <!-- Android 13 + Health Connect 2026: HC app no longer defines health permissions
+         on API 33 (expects platform definitions from API 34+). Without a definition
+         anywhere on the device, HC rejects requests with "permission is not declared".
+         Defining them here restores the API 33 flow. On API 34+ the platform
+         definition takes precedence and these are ignored. -->
+    <permission
+        android:name="android.permission.health.READ_STEPS"
+        android:protectionLevel="dangerous" />
+    <permission
+        android:name="android.permission.health.WRITE_STEPS"
+        android:protectionLevel="dangerous" />
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+    </queries>
     <application
         android:label="life_is_bot"
         android:name="${applicationName}"
@@ -31,6 +45,9 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
