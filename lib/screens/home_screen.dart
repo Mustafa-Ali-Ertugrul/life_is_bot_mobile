@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/google_fit_service.dart';
 import '../core/database.dart';
 import '../core/api_client.dart';
@@ -28,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _medicationCount = 0;
   int _habitCount = 0;
   int _currentStreak = 0;
+  String _gender = 'male'; // 'male' -> Turkuaz, 'female' -> Yeşil
 
   // Active module state map
   Map<String, bool> _botPreferences = {
@@ -64,6 +66,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadBackendData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userGender = prefs.getString('user_gender') ?? 'male';
+
     // Backend bağlı mı?
     _backendConnected = await _api.checkHealth();
 
@@ -91,6 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (mounted) {
         setState(() {
+          _gender = userGender;
           _botPreferences = newPrefs;
           _medicationCount = meds.length;
           _habitCount = habits.length;
@@ -126,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Life Is Bot'),
-        backgroundColor: Colors.teal,
+        backgroundColor: _gender == 'female' ? Colors.green : Colors.teal,
         actions: [
           // Raporlar butonu
           IconButton(
@@ -153,7 +159,7 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             icon: Icon(
               _backendConnected ? Icons.cloud_done : Icons.cloud_off,
-              color: _backendConnected ? Colors.green : Colors.grey,
+              color: _backendConnected ? Colors.white : Colors.grey,
             ),
             onPressed: _loadBackendData,
             tooltip: _backendConnected ? 'Backend bağlı' : 'Backend bağlı değil',
@@ -196,10 +202,23 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  String _formatNumber(int number) {
+    final str = number.toString();
+    final reg = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
+    return str.replaceAllMapped(reg, (Match m) => '${m[1]},');
+  }
+
   Widget _buildStepCard() {
+    final themeColor = _gender == 'female' ? Colors.green : const Color(0xFF1E406B);
+    final percentage = (_progress * 100).toStringAsFixed(1);
+    final formattedSteps = _formatNumber(_todaySteps);
+    final formattedGoal = _formatNumber(_stepGoal);
+
     return Card(
-      elevation: 4,
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
+        borderRadius: BorderRadius.circular(16),
         onTap: () {
           Navigator.push(
             context,
@@ -207,60 +226,145 @@ class _HomeScreenState extends State<HomeScreen> {
           ).then((_) => _refreshSteps());
         },
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(16),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              // Header Title
+              Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    '🚶 Bugünkü Adımlar',
+                    'Günlük Adım Sayısı',
                     style: TextStyle(
-                      fontSize: 20,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
                     ),
                   ),
-                  Icon(Icons.chevron_right, color: Colors.grey),
+                  const Icon(Icons.chevron_right, color: Colors.grey),
                 ],
               ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: 150,
-                height: 150,
-                child: Stack(
-                  alignment: Alignment.center,
+              const SizedBox(height: 16),
+              // Content Box (Ring Gauge + Divider + Runner Illustration)
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                child: Row(
                   children: [
-                    CircularProgressIndicator(
-                      value: _progress,
-                      strokeWidth: 12,
-                      backgroundColor: Colors.grey[300],
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        _progress >= 1.0 ? Colors.green : Colors.teal,
+                    // Left Gauge & Metrics Area
+                    Expanded(
+                      flex: 3,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // Circular Progress Dial
+                          SizedBox(
+                            width: 130,
+                            height: 130,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 130,
+                                  height: 130,
+                                  child: CircularProgressIndicator(
+                                    value: _progress,
+                                    strokeWidth: 14,
+                                    backgroundColor: Colors.blueGrey[100],
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      _progress >= 1.0 ? Colors.green : themeColor,
+                                    ),
+                                  ),
+                                ),
+                                Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      formattedSteps,
+                                      style: TextStyle(
+                                        fontSize: 26,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.grey[900],
+                                        letterSpacing: -0.5,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Hedef: $formattedGoal',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[700],
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Adım',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          // Percentage text at bottom right of the dial
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: Text(
+                                '$percentage%',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '$_todaySteps',
-                          style: const TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                          ),
+
+                    // Vertical Divider Line
+                    Container(
+                      height: 140,
+                      width: 1,
+                      color: Colors.grey[350],
+                      margin: const EdgeInsets.symmetric(horizontal: 12),
+                    ),
+
+                    // Right Runner Illustration Area
+                    Expanded(
+                      flex: 2,
+                      child: Container(
+                        height: 150,
+                        alignment: Alignment.center,
+                        child: Image.asset(
+                          _gender == 'female'
+                              ? 'assets/images/runner_female.png'
+                              : 'assets/images/runner_male.png',
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Icon(
+                              Icons.directions_run,
+                              size: 90,
+                              color: themeColor,
+                            );
+                          },
                         ),
-                        Text(
-                          '/ $_stepGoal',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
               if (!_googleFitAvailable)
                 Container(
                   padding: const EdgeInsets.all(12),
