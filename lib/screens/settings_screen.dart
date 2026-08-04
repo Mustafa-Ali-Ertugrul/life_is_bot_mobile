@@ -20,6 +20,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _backendConnected = false;
   bool _loading = true;
 
+  // Bot Modül Durumları
+  Map<String, bool> _botPreferences = {
+    'medication_bot': true,
+    'habit_bot': true,
+    'sport_bot': true,
+    'supplement_bot': false,
+    'step_bot': true,
+    'assessment_bot': false,
+  };
+
   @override
   void initState() {
     super.initState();
@@ -32,6 +42,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     final goal = await _api.getStepGoal();
     _backendConnected = await _api.checkHealth();
+
+    if (_backendConnected) {
+      final preferences = await _api.getPreferences();
+      for (var pref in preferences) {
+        final key = pref['bot_key'] as String?;
+        final enabled = pref['enabled'] as bool?;
+        if (key != null && enabled != null) {
+          _botPreferences[key] = enabled;
+        }
+      }
+    }
 
     setState(() {
       _stepGoalController.text = goal.toString();
@@ -87,6 +108,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       onChanged: (value) => _saveSettings(),
                     ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                _buildSectionTitle('🧩 Aktif Modüllerim (Botlar)'),
+                Card(
+                  child: Column(
+                    children: [
+                      _buildBotTile('💊 İlaç Takibi', 'medication_bot'),
+                      const Divider(height: 1),
+                      _buildBotTile('✅ Rutin Takibi', 'habit_bot'),
+                      const Divider(height: 1),
+                      _buildBotTile('🏃 Spor & Antrenman', 'sport_bot'),
+                      const Divider(height: 1),
+                      _buildBotTile('🧪 Takviye / Supplement', 'supplement_bot'),
+                      const Divider(height: 1),
+                      _buildBotTile('👟 Adım Takibi', 'step_bot'),
+                      const Divider(height: 1),
+                      _buildBotTile('📊 Değerlendirme / Anket', 'assessment_bot'),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -175,6 +215,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             ),
+    );
+  }
+
+  Widget _buildBotTile(String title, String botKey) {
+    final bool isEnabled = _botPreferences[botKey] ?? false;
+    return SwitchListTile(
+      title: Text(title),
+      value: isEnabled,
+      onChanged: (value) async {
+        setState(() {
+          _botPreferences[botKey] = value;
+        });
+
+        if (_backendConnected) {
+          final success = await _api.updatePreference(botKey, value);
+          if (!success && mounted) {
+            setState(() {
+              _botPreferences[botKey] = !value;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Modül güncellenirken hata oluştu')),
+            );
+          }
+        }
+      },
     );
   }
 

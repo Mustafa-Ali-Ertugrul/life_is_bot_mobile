@@ -94,10 +94,10 @@ class _ReportsScreenState extends State<ReportsScreen>
       return const Center(child: Text('Rapor verisi yok'));
     }
 
-    final total = _dailyReport!['total'] ?? 0;
-    final completed = _dailyReport!['completed'] ?? 0;
-    final missed = _dailyReport!['missed'] ?? 0;
-    final unanswered = _dailyReport!['unanswered'] ?? 0;
+    final total = (_dailyReport!['total'] ?? 0).toInt();
+    final completed = (_dailyReport!['completed'] ?? 0).toInt();
+    final missed = (_dailyReport!['missed'] ?? 0).toInt();
+    final unanswered = (_dailyReport!['unanswered'] ?? 0).toInt();
     final rate = total > 0 ? (completed / total * 100).round() : 0;
 
     return ListView(
@@ -122,9 +122,9 @@ class _ReportsScreenState extends State<ReportsScreen>
       return const Center(child: Text('Rapor verisi yok'));
     }
 
-    final total = _weeklyReport!['total'] ?? 0;
-    final completed = _weeklyReport!['completed'] ?? 0;
-    final rate = _weeklyReport!['compliance_rate'] ?? 0;
+    final total = (_weeklyReport!['total'] ?? 0).toInt();
+    final completed = (_weeklyReport!['completed'] ?? 0).toInt();
+    final rate = (_weeklyReport!['compliance_rate'] ?? 0).toInt();
     final weekStart = _weeklyReport!['week_start'] ?? '';
     final weekEnd = _weeklyReport!['week_end'] ?? '';
 
@@ -151,8 +151,8 @@ class _ReportsScreenState extends State<ReportsScreen>
         _buildProgressCard('Haftalık İlerleme', rate, completed, total),
         const SizedBox(height: 16),
         _buildStatRow('✅ Tamamlanan', completed, Colors.green),
-        _buildStatRow('❌ Kaçırılan', _weeklyReport!['missed'] ?? 0, Colors.red),
-        _buildStatRow('⏳ Yanıtlanmayan', _weeklyReport!['unanswered'] ?? 0, Colors.orange),
+        _buildStatRow('❌ Kaçırılan', (_weeklyReport!['missed'] ?? 0).toInt(), Colors.red),
+        _buildStatRow('⏳ Yanıtlanmayan', (_weeklyReport!['unanswered'] ?? 0).toInt(), Colors.orange),
       ],
     );
   }
@@ -162,9 +162,9 @@ class _ReportsScreenState extends State<ReportsScreen>
       return const Center(child: Text('Rapor verisi yok'));
     }
 
-    final total = _monthlyReport!['total'] ?? 0;
-    final completed = _monthlyReport!['total_completed'] ?? 0;
-    final rate = _monthlyReport!['completion_rate'] ?? 0;
+    final total = (_monthlyReport!['total'] ?? 0).toInt();
+    final completed = (_monthlyReport!['total_completed'] ?? 0).toInt();
+    final rate = (_monthlyReport!['completion_rate'] ?? 0).toInt();
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -172,8 +172,8 @@ class _ReportsScreenState extends State<ReportsScreen>
         _buildProgressCard('Aylık İlerleme', rate, completed, total),
         const SizedBox(height: 16),
         _buildStatRow('✅ Tamamlanan', completed, Colors.green),
-        _buildStatRow('❌ Kaçırılan', _monthlyReport!['total_missed'] ?? 0, Colors.red),
-        _buildStatRow('⏳ Bekleyen', _monthlyReport!['total_pending'] ?? 0, Colors.orange),
+        _buildStatRow('❌ Kaçırılan', (_monthlyReport!['total_missed'] ?? 0).toInt(), Colors.red),
+        _buildStatRow('⏳ Bekleyen', (_monthlyReport!['total_pending'] ?? 0).toInt(), Colors.orange),
       ],
     );
   }
@@ -183,8 +183,8 @@ class _ReportsScreenState extends State<ReportsScreen>
       return const Center(child: Text('Streak verisi yok'));
     }
 
-    final current = _streak!['current'] ?? 0;
-    final longest = _streak!['longest'] ?? 0;
+    final current = (_streak!['current'] ?? 0).toInt();
+    final longest = (_streak!['longest'] ?? 0).toInt();
     final todayCompleted = _streak!['today_completed'] ?? false;
 
     return ListView(

@@ -29,6 +29,16 @@ class _HomeScreenState extends State<HomeScreen> {
   int _habitCount = 0;
   int _currentStreak = 0;
 
+  // Active module state map
+  Map<String, bool> _botPreferences = {
+    'medication_bot': true,
+    'habit_bot': true,
+    'sport_bot': true,
+    'supplement_bot': false,
+    'step_bot': true,
+    'assessment_bot': false,
+  };
+
   @override
   void initState() {
     super.initState();
@@ -58,6 +68,17 @@ class _HomeScreenState extends State<HomeScreen> {
     _backendConnected = await _api.checkHealth();
 
     if (_backendConnected) {
+      // Modül tercihlerini çek
+      final preferences = await _api.getPreferences();
+      final Map<String, bool> newPrefs = Map.from(_botPreferences);
+      for (var pref in preferences) {
+        final key = pref['bot_key'] as String?;
+        final enabled = pref['enabled'] as bool?;
+        if (key != null && enabled != null) {
+          newPrefs[key] = enabled;
+        }
+      }
+
       // İlaç ve rutin sayılarını al
       final meds = await _api.getMedications();
       final habits = await _api.getHabits();
@@ -70,6 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (mounted) {
         setState(() {
+          _botPreferences = newPrefs;
           _medicationCount = meds.length;
           _habitCount = habits.length;
           _currentStreak = streak?['current'] ?? 0;
@@ -155,13 +177,19 @@ class _HomeScreenState extends State<HomeScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  _buildStepCard(),
-                  const SizedBox(height: 16),
+                  if (_botPreferences['step_bot'] ?? true) ...[
+                    _buildStepCard(),
+                    const SizedBox(height: 16),
+                  ],
                   _buildStreakCard(),
-                  const SizedBox(height: 16),
-                  _buildMedicationCard(),
-                  const SizedBox(height: 16),
-                  _buildHabitCard(),
+                  if (_botPreferences['medication_bot'] ?? true) ...[
+                    const SizedBox(height: 16),
+                    _buildMedicationCard(),
+                  ],
+                  if (_botPreferences['habit_bot'] ?? true) ...[
+                    const SizedBox(height: 16),
+                    _buildHabitCard(),
+                  ],
                 ],
               ),
             ),

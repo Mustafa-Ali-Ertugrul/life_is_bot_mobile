@@ -188,14 +188,14 @@ class ApiClient {
     try {
       final response = await _client
           .get(
-            Uri.parse('${AppConfig.baseUrl}/steps/settings'),
+            Uri.parse('${AppConfig.baseUrl}/step/settings'),
             headers: _headers,
           )
           .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return data['daily_goal'] ?? 10000;
+        return data['daily_target'] ?? data['daily_goal'] ?? 10000;
       }
       return 10000;
     } catch (e) {
@@ -208,10 +208,10 @@ class ApiClient {
   Future<bool> updateStepGoal(int goal) async {
     try {
       final response = await _client
-          .post(
-            Uri.parse('${AppConfig.baseUrl}/steps/settings'),
+          .patch(
+            Uri.parse('${AppConfig.baseUrl}/step/settings'),
             headers: _headers,
-            body: jsonEncode({'daily_goal': goal}),
+            body: jsonEncode({'daily_target': goal}),
           )
           .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
 
@@ -307,11 +307,11 @@ class ApiClient {
     try {
       final response = await _client
           .post(
-            Uri.parse('${AppConfig.baseUrl}/steps'),
+            Uri.parse('${AppConfig.baseUrl}/step/logs'),
             headers: _headers,
             body: jsonEncode({
               'steps': steps,
-              'date': date.toIso8601String().split('T')[0],
+              'log_date': date.toIso8601String().split('T')[0],
             }),
           )
           .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
@@ -319,6 +319,45 @@ class ApiClient {
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
       debugPrint('❌ Error posting steps: $e');
+      return false;
+    }
+  }
+
+  /// Bot/Modül tercihlerini getir
+  Future<List<Map<String, dynamic>>> getPreferences() async {
+    try {
+      final response = await _client
+          .get(
+            Uri.parse('${AppConfig.baseUrl}/preferences'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.cast<Map<String, dynamic>>();
+      }
+      return [];
+    } catch (e) {
+      debugPrint('❌ Error fetching preferences: $e');
+      return [];
+    }
+  }
+
+  /// Bot/Modül aç/kapat
+  Future<bool> updatePreference(String botKey, bool enabled) async {
+    try {
+      final response = await _client
+          .patch(
+            Uri.parse('${AppConfig.baseUrl}/preferences/$botKey'),
+            headers: _headers,
+            body: jsonEncode({'enabled': enabled}),
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('❌ Error updating preference $botKey: $e');
       return false;
     }
   }
