@@ -179,6 +179,40 @@ class NotificationService {
     await _notifications.cancelAll();
   }
 
+  /// İlaç hatırlatmalarını toplu aç/kapat
+  static Future<void> setMedicationReminders(
+    bool enabled,
+    List<Medication> medications,
+  ) async {
+    for (final medication in medications) {
+      if (enabled) {
+        await scheduleMedicationReminder(medication: medication);
+      } else {
+        await cancelMedicationReminder(medication.id);
+      }
+    }
+  }
+
+  /// Rutin hatırlatmalarını toplu aç/kapat
+  static Future<void> setHabitReminders(bool enabled, List<Habit> habits) async {
+    for (final habit in habits) {
+      if (enabled) {
+        await scheduleHabitReminder(habit: habit);
+      } else {
+        await cancelHabitReminders(habit.id, habit.days);
+      }
+    }
+  }
+
+  /// Adım hatırlatmasını aç/kapat
+  static Future<void> setStepReminder(bool enabled) async {
+    if (enabled) {
+      await scheduleStepReminder();
+    } else {
+      await _notifications.cancel(9999);
+    }
+  }
+
   /// Bir sonraki belirli saati hesapla
   static tz.TZDateTime _nextInstanceOfTime(int hour, int minute) {
     final now = tz.TZDateTime.now(tz.local);

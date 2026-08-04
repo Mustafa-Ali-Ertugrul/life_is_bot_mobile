@@ -1,5 +1,6 @@
 // lib/screens/habits_screen.dart
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
 import '../models/habit.dart';
 import '../services/notification_service.dart';
@@ -109,7 +110,10 @@ class _HabitsScreenState extends State<HabitsScreen> {
 
                 final created = await _api.createHabit(habit);
                 if (created != null) {
-                  await NotificationService.scheduleHabitReminder(habit: created);
+                  final prefs = await SharedPreferences.getInstance();
+                  if (prefs.getBool('habit_reminders') ?? true) {
+                    await NotificationService.scheduleHabitReminder(habit: created);
+                  }
                   if (context.mounted) Navigator.pop(context);
                   await _loadHabits();
                 }

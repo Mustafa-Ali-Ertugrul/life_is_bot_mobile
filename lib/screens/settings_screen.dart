@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
 import '../core/config.dart';
+import '../models/habit.dart';
+import '../models/medication.dart';
+import '../services/notification_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -19,6 +22,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _stepReminders = true;
   bool _backendConnected = false;
   bool _loading = true;
+  String _gender = 'male'; // 'male' -> Turkuaz (teal), 'female' -> Yeşil (green)
 
   // Bot Modül Durumları
   Map<String, bool> _botPreferences = {
@@ -55,6 +59,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     setState(() {
+      _gender = prefs.getString('user_gender') ?? 'male';
       _stepGoalController.text = goal.toString();
       _medicationReminders = prefs.getBool('medication_reminders') ?? true;
       _habitReminders = prefs.getBool('habit_reminders') ?? true;
@@ -67,6 +72,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     final newGoal = int.tryParse(_stepGoalController.text) ?? 10000;
 
+    await prefs.setString('user_gender', _gender);
     await prefs.setBool('medication_reminders', _medicationReminders);
     await prefs.setBool('habit_reminders', _habitReminders);
     await prefs.setBool('step_reminders', _stepReminders);
@@ -87,13 +93,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Ayarlar'),
-        backgroundColor: Colors.teal,
+        backgroundColor: _gender == 'female' ? Colors.green : Colors.teal,
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                _buildSectionTitle('👤 Cinsiyet & Tema'),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: DropdownButtonFormField<String>(
+                      value: _gender,
+                      decoration: const InputDecoration(
+                        labelText: 'Cinsiyet',
+                        border: InputBorder.none,
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'male',
+                          child: Text('Erkek (Turkuaz Tema)'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'female',
+                          child: Text('Kadın (Yeşil Tema)'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() => _gender = value);
+                          _saveSettings();
+                        }
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
                 _buildSectionTitle('🚶 Adım Hedefi'),
                 Card(
                   child: Padding(
@@ -137,27 +173,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       SwitchListTile(
                         title: const Text('İlaç hatırlatmaları'),
                         value: _medicationReminders,
-                        onChanged: (value) {
+                        onChanged: (value) async {
                           setState(() => _medicationReminders = value);
-                          _saveSettings();
+                          await _saveSettings();
+                          await _syncMedicationReminders(value);
                         },
                       ),
                       const Divider(height: 1),
                       SwitchListTile(
                         title: const Text('Rutin hatırlatmaları'),
                         value: _habitReminders,
-                        onChanged: (value) {
+                        onChanged: (value) async {
                           setState(() => _habitReminders = value);
-                          _saveSettings();
+                          await _saveSettings();
+                          await _syncHabitReminders(value);
                         },
                       ),
                       const Divider(height: 1),
                       SwitchListTile(
                         title: const Text('Adım hatırlatmaları'),
                         value: _stepReminders,
-                        onChanged: (value) {
+                        onChanged: (value) async {
                           setState(() => _stepReminders = value);
-                          _saveSettings();
+                          await _saveSettings();
+                          await NotificationService.setStepReminder(value);
                         },
                       ),
                     ],
@@ -218,6 +257,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Future<void> _syncMedicationReminders(bool enabled) async {
+    final data = await _api.getMedications();
+    final medications = data.map((json) => Medication.fromJson(json)).toList();
+    await NotificationService.setMedicationReminders(enabled, medications);
+  }
+
+  Future<void> _syncHabitReminders(bool enabled) async {
+    final data = await _api.getHabits();
+    final habits = data.map((json) => Habit.fromJson(json)).toList();
+    await NotificationService.setHabitReminders(enabled, habits);
+  }
+
   Widget _buildBotTile(String title, String botKey) {
     final bool isEnabled = _botPreferences[botKey] ?? false;
     return SwitchListTile(
@@ -248,10 +299,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       padding: const EdgeInsets.only(left: 4, bottom: 8),
       child: Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.bold,
-          color: Colors.teal,
+          color: _gender == 'female' ? Colors.green : Colors.teal,
         ),
       ),
     );

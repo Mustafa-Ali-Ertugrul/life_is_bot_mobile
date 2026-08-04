@@ -361,4 +361,68 @@ class ApiClient {
       return false;
     }
   }
+
+  /// Onboarding durumunu getir (sıradaki soru dahil)
+  Future<Map<String, dynamic>?> getOnboardingStatus() async {
+    try {
+      final response = await _client
+          .get(
+            Uri.parse('${AppConfig.baseUrl}/onboarding'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('❌ Error fetching onboarding status: $e');
+      return null;
+    }
+  }
+
+  /// Onboarding cevabı gönder; sonraki soru veya sonucu döndür
+  Future<Map<String, dynamic>?> submitOnboardingAnswer(
+    String questionKey,
+    String answerValue,
+  ) async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('${AppConfig.baseUrl}/onboarding/answer'),
+            headers: _headers,
+            body: jsonEncode({
+              'question_key': questionKey,
+              'answer_value': answerValue,
+            }),
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('❌ Error submitting onboarding answer: $e');
+      return null;
+    }
+  }
+
+  /// Onboarding testi atla
+  Future<bool> skipOnboarding() async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('${AppConfig.baseUrl}/onboarding/skip'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('❌ Error skipping onboarding: $e');
+      return false;
+    }
+  }
 }

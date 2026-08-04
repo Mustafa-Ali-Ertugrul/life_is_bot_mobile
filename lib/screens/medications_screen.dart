@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
 import '../models/medication.dart';
 import '../services/notification_service.dart';
@@ -90,7 +91,10 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
 
                 final created = await _api.createMedication(medication);
                 if (created != null) {
-                  await NotificationService.scheduleMedicationReminder(medication: created);
+                  final prefs = await SharedPreferences.getInstance();
+                  if (prefs.getBool('medication_reminders') ?? true) {
+                    await NotificationService.scheduleMedicationReminder(medication: created);
+                  }
                   if (context.mounted) Navigator.pop(context);
                   await _loadMedications();
                 }
