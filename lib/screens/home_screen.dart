@@ -55,14 +55,23 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initGoogleFit() async {
-    _googleFitAvailable = await _googleFit.isAvailable();
+    try {
+      _googleFitAvailable = await _googleFit
+          .isAvailable()
+          .timeout(const Duration(seconds: 3), onTimeout: () => false);
 
-    if (_googleFitAvailable) {
-      await _googleFit.requestPermission();
-      await _refreshSteps();
-    } else {
-      _todaySteps = await _db.getTodaySteps();
+      if (_googleFitAvailable) {
+        await _googleFit
+            .requestPermission()
+            .timeout(const Duration(seconds: 5), onTimeout: () => false);
+        await _refreshSteps();
+        return;
+      }
+    } catch (e) {
+      debugPrint('❌ Google Fit init error: $e');
+      _googleFitAvailable = false;
     }
+    _todaySteps = await _db.getTodaySteps();
   }
 
   Future<void> _loadBackendData() async {
@@ -378,7 +387,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          "Google Fit yüklü değil. Emulator'da test edilemez.",
+                           "Google Fit / Health Connect bu cihazda yok. Adımlar manuel kayıtlardan okunur.",
                           style: TextStyle(fontSize: 12),
                         ),
                       ),
