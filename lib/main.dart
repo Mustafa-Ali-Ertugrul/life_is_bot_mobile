@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/api_client.dart';
+import 'core/theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'services/notification_service.dart';
@@ -29,20 +30,26 @@ void main() async {
     }
   }
 
-  runApp(MyApp(home: home));
+  // Tema: onboarding'de seçilen cinsiyete göre (varsayılan erkek)
+  final female = (prefs.getString('user_gender') ?? 'male') == 'female';
+
+  runApp(MyApp(home: home, female: female));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key, required this.home});
+  const MyApp({super.key, required this.home, this.female = false});
 
   final Widget home;
+  final bool female;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Life Is Bot',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: female ? AppTheme.femaleColor : AppTheme.maleColor,
+        ),
         useMaterial3: true,
       ),
       home: home,

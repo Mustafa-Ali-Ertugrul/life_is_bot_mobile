@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
 import '../core/config.dart';
+import '../core/theme.dart';
 import '../models/habit.dart';
 import '../models/medication.dart';
 import '../services/notification_service.dart';
@@ -72,7 +73,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     final newGoal = int.tryParse(_stepGoalController.text) ?? 10000;
 
-    await prefs.setString('user_gender', _gender);
     await prefs.setBool('medication_reminders', _medicationReminders);
     await prefs.setBool('habit_reminders', _habitReminders);
     await prefs.setBool('step_reminders', _stepReminders);
@@ -93,43 +93,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Ayarlar'),
-        backgroundColor: _gender == 'female' ? Colors.green : Colors.teal,
+        backgroundColor: AppTheme.of(_gender),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                _buildSectionTitle('👤 Cinsiyet & Tema'),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: DropdownButtonFormField<String>(
-                      value: _gender,
-                      decoration: const InputDecoration(
-                        labelText: 'Cinsiyet',
-                        border: InputBorder.none,
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'male',
-                          child: Text('Erkek (Turkuaz Tema)'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'female',
-                          child: Text('Kadın (Yeşil Tema)'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value != null) {
-                          setState(() => _gender = value);
-                          _saveSettings();
-                        }
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
                 _buildSectionTitle('🚶 Adım Hedefi'),
                 Card(
                   child: Padding(
@@ -302,7 +272,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.bold,
-          color: _gender == 'female' ? Colors.green : Colors.teal,
+          color: AppTheme.of(_gender),
         ),
       ),
     );

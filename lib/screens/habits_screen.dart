@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
+import '../core/theme.dart';
 import '../models/habit.dart';
 import '../services/notification_service.dart';
 
@@ -16,11 +17,15 @@ class _HabitsScreenState extends State<HabitsScreen> {
   final ApiClient _api = ApiClient();
   List<Habit> _habits = [];
   bool _loading = true;
+  String _gender = 'male';
 
   @override
   void initState() {
     super.initState();
     _loadHabits();
+    AppTheme.loadGender().then((g) {
+      if (mounted) setState(() => _gender = g);
+    });
   }
 
   Future<void> _loadHabits() async {
@@ -145,7 +150,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
           }
         });
       },
-      selectedColor: Colors.teal,
+      selectedColor: AppTheme.of(_gender),
       checkmarkColor: Colors.white,
     );
   }
@@ -182,11 +187,11 @@ class _HabitsScreenState extends State<HabitsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Rutin Takibi'),
-        backgroundColor: Colors.teal,
+        backgroundColor: AppTheme.of(_gender),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddDialog,
-        backgroundColor: Colors.teal,
+        backgroundColor: AppTheme.of(_gender),
         child: const Icon(Icons.add),
       ),
       body: _loading

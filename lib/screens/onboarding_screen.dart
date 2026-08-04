@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
+import '../core/theme.dart';
 import 'home_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -78,7 +79,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       _error = false;
     });
 
-    if (key == 'a1_gender') _genderAnswer = value;
+    if (key == 'a1_gender') {
+      _genderAnswer = value;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'user_gender',
+        value == 'Kadın' ? 'female' : 'male',
+      );
+    }
 
     final res = await _api.submitOnboardingAnswer(key, value);
     if (res == null) {
@@ -130,7 +138,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Life Is Bot'),
-        backgroundColor: Colors.teal,
+        backgroundColor: AppTheme.maleColor,
         actions: [
           TextButton(
             onPressed: _busy ? null : _skip,
@@ -162,7 +170,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         children: [
           Text(
             'Soru ${index + 1} / $total',
-            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal),
+            style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.maleColor),
           ),
           const SizedBox(height: 8),
           LinearProgressIndicator(value: (index + 1) / total, backgroundColor: Colors.grey.shade300),
@@ -260,7 +268,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           height: 56,
           child: ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.teal,
+              backgroundColor: AppTheme.maleColor,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             onPressed:
@@ -311,7 +319,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           height: 56,
           child: ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.teal,
+              backgroundColor: AppTheme.maleColor,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             onPressed: _busy
@@ -336,7 +344,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       padding: const EdgeInsets.all(16),
       children: [
         const SizedBox(height: 24),
-        const Icon(Icons.celebration, size: 64, color: Colors.teal),
+        const Icon(Icons.celebration, size: 64, color: AppTheme.maleColor),
         const SizedBox(height: 16),
         const Text(
           'Test Tamamlandı!',
@@ -347,7 +355,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         Text(
           'Profiliniz: ${_profileLabels[profileType] ?? profileType}',
           textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 17, color: Colors.teal, fontWeight: FontWeight.w600),
+          style: const TextStyle(fontSize: 17, color: AppTheme.maleColor, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 24),
         const Text(
@@ -370,7 +378,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           const SizedBox(height: 8),
           Card(
             child: ListTile(
-              leading: const Icon(Icons.directions_walk, color: Colors.teal),
+              leading: const Icon(Icons.directions_walk, color: AppTheme.maleColor),
               title: Text('Günlük adım hedefi: $stepGoal'),
             ),
           ),
@@ -380,7 +388,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           height: 56,
           child: ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.teal,
+              backgroundColor: AppTheme.maleColor,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             onPressed: _enterApp,

@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../core/database.dart';
+import '../core/theme.dart';
 import '../services/google_fit_service.dart';
 
 class StepsScreen extends StatefulWidget {
@@ -17,6 +18,7 @@ class _StepsScreenState extends State<StepsScreen> {
 
   final Map<DateTime, int> _weeklySteps = {};
   bool _loading = true;
+  String _gender = 'male';
 
   final List<String> _dayNames = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 
@@ -24,6 +26,9 @@ class _StepsScreenState extends State<StepsScreen> {
   void initState() {
     super.initState();
     _loadSteps();
+    AppTheme.loadGender().then((g) {
+      if (mounted) setState(() => _gender = g);
+    });
   }
 
   Future<void> _loadSteps() async {
@@ -61,7 +66,7 @@ class _StepsScreenState extends State<StepsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Adım Takibi'),
-        backgroundColor: Colors.teal,
+        backgroundColor: AppTheme.of(_gender),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -95,7 +100,7 @@ class _StepsScreenState extends State<StepsScreen> {
             'Toplam',
             '$_totalSteps',
             Icons.directions_walk,
-            Colors.teal,
+            AppTheme.of(_gender),
           ),
         ),
         const SizedBox(width: 12),
@@ -226,7 +231,7 @@ class _StepsScreenState extends State<StepsScreen> {
                           toY: steps.toDouble(),
                           width: 20,
                           borderRadius: BorderRadius.circular(4),
-                          color: isToday ? Colors.teal : Colors.teal.withOpacity(0.5),
+                          color: isToday ? AppTheme.of(_gender) : AppTheme.of(_gender).withOpacity(0.5),
                         ),
                       ],
                     );
@@ -271,7 +276,7 @@ class _StepsScreenState extends State<StepsScreen> {
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: isToday ? Colors.teal : Colors.grey[300],
+                        color: isToday ? AppTheme.of(_gender) : Colors.grey[300],
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Center(

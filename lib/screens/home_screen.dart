@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/google_fit_service.dart';
 import '../core/database.dart';
 import '../core/api_client.dart';
+import '../core/theme.dart';
 import 'habits_screen.dart';
 import 'medications_screen.dart';
 import 'steps_screen.dart';
@@ -77,6 +78,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadBackendData() async {
     final prefs = await SharedPreferences.getInstance();
     final userGender = prefs.getString('user_gender') ?? 'male';
+    if (mounted) {
+      setState(() => _gender = userGender);
+    }
 
     // Backend bağlı mı?
     _backendConnected = await _api.checkHealth();
@@ -105,7 +109,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (mounted) {
         setState(() {
-          _gender = userGender;
           _botPreferences = newPrefs;
           _medicationCount = meds.length;
           _habitCount = habits.length;
@@ -141,7 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Life Is Bot'),
-        backgroundColor: _gender == 'female' ? Colors.green : Colors.teal,
+        backgroundColor: AppTheme.of(_gender),
         actions: [
           // Raporlar butonu
           IconButton(
@@ -218,7 +221,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildStepCard() {
-    final themeColor = _gender == 'female' ? Colors.green : const Color(0xFF1E406B);
+    final themeColor = _gender == 'female' ? AppTheme.femaleColor : AppTheme.maleColor;
     final percentage = (_progress * 100).toStringAsFixed(1);
     final formattedSteps = _formatNumber(_todaySteps);
     final formattedGoal = _formatNumber(_stepGoal);

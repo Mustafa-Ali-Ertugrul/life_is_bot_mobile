@@ -1,6 +1,7 @@
 // lib/screens/reports_screen.dart
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../core/theme.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -19,12 +20,16 @@ class _ReportsScreenState extends State<ReportsScreen>
   Map<String, dynamic>? _monthlyReport;
   Map<String, dynamic>? _streak;
   bool _loading = true;
+  String _gender = 'male';
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _loadReports();
+    AppTheme.loadGender().then((g) {
+      if (mounted) setState(() => _gender = g);
+    });
   }
 
   @override
@@ -57,7 +62,7 @@ class _ReportsScreenState extends State<ReportsScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Raporlar'),
-        backgroundColor: Colors.teal,
+        backgroundColor: AppTheme.of(_gender),
         bottom: TabBar(
           controller: _tabController,
           isScrollable: true,
@@ -277,7 +282,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                     strokeWidth: 12,
                     backgroundColor: Colors.grey[300],
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      rate >= 80 ? Colors.green : Colors.teal,
+                      rate >= 80 ? Colors.green : AppTheme.of(_gender),
                     ),
                   ),
                   Column(

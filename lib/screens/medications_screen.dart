@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
+import '../core/theme.dart';
 import '../models/medication.dart';
 import '../services/notification_service.dart';
 
@@ -15,11 +16,15 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
   final ApiClient _api = ApiClient();
   List<Medication> _medications = [];
   bool _loading = true;
+  String _gender = 'male';
 
   @override
   void initState() {
     super.initState();
     _loadMedications();
+    AppTheme.loadGender().then((g) {
+      if (mounted) setState(() => _gender = g);
+    });
   }
 
   Future<void> _loadMedications() async {
@@ -139,11 +144,11 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('İlaç Takibi'),
-        backgroundColor: Colors.teal,
+        backgroundColor: AppTheme.of(_gender),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddDialog,
-        backgroundColor: Colors.teal,
+        backgroundColor: AppTheme.of(_gender),
         child: const Icon(Icons.add),
       ),
       body: _loading
