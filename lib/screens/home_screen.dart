@@ -3,7 +3,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/google_fit_service.dart';
 import '../core/database.dart';
 import '../core/api_client.dart';
+import '../core/app_navigator.dart';
 import '../core/theme.dart';
+import '../models/habit.dart';
+import '../models/medication.dart';
+import '../services/notification_service.dart';
 import 'habits_screen.dart';
 import 'medications_screen.dart';
 import 'steps_screen.dart';
@@ -50,6 +54,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _initData() async {
     setState(() => _loading = true);
+    NotificationService.consumeLaunchPayload().then((payload) {
+      if (payload != null) AppNavigator.openForPayload(payload);
+    });
     await _initGoogleFit();
     await _loadBackendData();
     setState(() => _loading = false);
@@ -65,7 +72,12 @@ class _HomeScreenState extends State<HomeScreen> {
         await _googleFit
             .requestPermission()
             .timeout(const Duration(seconds: 5), onTimeout: () => false);
-        await _refreshSteps();
+        try {
+          await _refreshSteps();
+        } catch (e) {
+          debugPrint('❌ Refresh steps error: $e');
+          _todaySteps = await _db.getTodaySteps();
+        }
         return;
       }
     } catch (e) {
@@ -100,6 +112,23 @@ class _HomeScreenState extends State<HomeScreen> {
       // İlaç ve rutin sayılarını al
       final meds = await _api.getMedications();
       final habits = await _api.getHabits();
+
+      // Yerel bildirim zamanlamalarını güncel saat dilimiyle senkronla
+      if (prefs.getBool('medication_reminders') ?? true) {
+        await NotificationService.setMedicationReminders(
+          true,
+          meds.map((m) => Medication.fromJson(m)).toList(),
+        );
+      }
+      if (prefs.getBool('habit_reminders') ?? true) {
+        await NotificationService.setHabitReminders(
+          true,
+          habits.map((h) => Habit.fromJson(h)).toList(),
+        );
+      }
+      if (prefs.getBool('step_reminders') ?? true) {
+        await NotificationService.setStepReminder(true);
+      }
 
       // Streak bilgisini al
       final streak = await _api.getStreak();

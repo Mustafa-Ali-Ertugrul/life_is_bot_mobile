@@ -1,13 +1,26 @@
 // lib/services/notification_service.dart
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tz;
+import '../core/api_client.dart';
+import '../core/app_navigator.dart';
 import '../models/medication.dart';
 import '../models/habit.dart';
+
+/// Uygulama kapalıyken bildirim aksiyonlarını işler (background isolate)
+@pragma('vm:entry-point')
+void backgroundNotificationHandler(NotificationResponse response) async {
+  await NotificationService.handleAction(response, allowNavigation: false);
+}
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
+
+  /// Exposed for foreground service channel creation.
+  static FlutterLocalNotificationsPlugin get localNotifications =>
+      _notifications;
 
   static bool _initialized = false;
 
@@ -17,21 +30,69 @@ class NotificationService {
 
     // Timezone başlat
     tz.initializeTimeZones();
+    final timeZoneName = await FlutterTimezone.getLocalTimezone();
+    tz.setLocalLocation(tz.getLocation(timeZoneName.identifier));
 
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
 
     await _notifications.initialize(
       initSettings,
-      onDidReceiveNotificationResponse: (NotificationResponse response) {
-        // Bildirime tıklanınca çalışır
-      },
+      onDidReceiveNotificationResponse: (response) =>
+          handleAction(response, allowNavigation: true),
+      onDidReceiveBackgroundNotificationResponse: backgroundNotificationHandler,
     );
 
     // Android 13+ için bildirim kanalı oluştur
     await _createNotificationChannels();
 
     _initialized = true;
+  }
+
+  /// Aksiyon butonu / bildirim tıklamasını işler
+  static Future<void> handleAction(
+    NotificationResponse response, {
+    required bool allowNavigation,
+  }) async {
+    final actionId = response.actionId;
+    if (actionId == null || actionId.isEmpty) {
+      if (allowNavigation) AppNavigator.openForPayload(response.payload);
+      return;
+    }
+
+    String? relatedType;
+    int? relatedId;
+    String? responseType;
+
+    if (actionId.startsWith('med_taken_') || actionId.startsWith('med_not_')) {
+      relatedType = 'medication_plan';
+      relatedId = int.tryParse(actionId.split('_').last);
+      responseType = actionId.startsWith('med_taken_') ? 'taken' : 'not_taken';
+    } else if (actionId.startsWith('habit_done_') || actionId.startsWith('habit_not_')) {
+      relatedType = 'habit';
+      relatedId = int.tryParse(actionId.split('_').last);
+      responseType = actionId.startsWith('habit_done_') ? 'done' : 'not_done';
+    }
+
+    if (relatedId == null || responseType == null || relatedType == null) return;
+
+    final ok = await ApiClient().submitResponse(
+      relatedType: relatedType,
+      relatedId: relatedId,
+      response: responseType,
+    );
+    if (ok && allowNavigation && response.id != null) {
+      await _notifications.cancel(response.id!);
+    }
+  }
+
+  /// Uygulama bildirimden açıldıysa payload'ı verir
+  static Future<String?> consumeLaunchPayload() async {
+    final details = await _notifications.getNotificationAppLaunchDetails();
+    if (details?.didNotificationLaunchApp ?? false) {
+      return details!.notificationResponse?.payload;
+    }
+    return null;
   }
 
   /// Bildirim kanalları oluştur
@@ -82,6 +143,18 @@ class NotificationService {
     return result ?? false;
   }
 
+  /// İzin durumuna göre exact/inexact zamanlama modu seçer
+  static Future<AndroidScheduleMode> _scheduleMode() async {
+    final canExact = await _notifications
+            .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin>()
+            ?.canScheduleExactNotifications() ??
+        false;
+    return canExact
+        ? AndroidScheduleMode.exactAllowWhileIdle
+        : AndroidScheduleMode.inexactAllowWhileIdle;
+  }
+
   /// İlaç hatırlatması zamanla (her gün tekrarlanır)
   static Future<void> scheduleMedicationReminder({
     required Medication medication,
@@ -95,16 +168,28 @@ class NotificationService {
       '💊 İlaç Hatırlatması',
       '${medication.name} alma zamanı geldi!',
       _nextInstanceOfTime(hour, minute),
-      const NotificationDetails(
+      NotificationDetails(
         android: AndroidNotificationDetails(
           'medications',
           'İlaç Hatırlatmaları',
           channelDescription: 'İlaç alma hatırlatmaları',
           importance: Importance.max,
           priority: Priority.high,
+          actions: [
+            AndroidNotificationAction(
+              'med_taken_${medication.id}',
+              'İçtim ✅',
+              cancelNotification: true,
+            ),
+            AndroidNotificationAction(
+              'med_not_${medication.id}',
+              'İçmedim',
+              cancelNotification: true,
+            ),
+          ],
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: await _scheduleMode(),
       matchDateTimeComponents: DateTimeComponents.time,
       payload: 'medication_${medication.id}',
     );
@@ -125,16 +210,28 @@ class NotificationService {
         '✅ Rutin Hatırlatması',
         '${habit.name} zamanı geldi!',
         _nextInstanceOfDay(day, hour, minute),
-        const NotificationDetails(
+        NotificationDetails(
           android: AndroidNotificationDetails(
             'habits',
             'Rutin Hatırlatmaları',
             channelDescription: 'Günlük rutin hatırlatmaları',
             importance: Importance.high,
             priority: Priority.high,
+            actions: [
+              AndroidNotificationAction(
+                'habit_done_${habit.id}',
+                'Yapıldı ✅',
+                cancelNotification: true,
+              ),
+              AndroidNotificationAction(
+                'habit_not_${habit.id}',
+                'Yapmadım',
+                cancelNotification: true,
+              ),
+            ],
           ),
         ),
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        androidScheduleMode: await _scheduleMode(),
         matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
         payload: 'habit_${habit.id}',
       );
@@ -156,7 +253,7 @@ class NotificationService {
           importance: Importance.defaultImportance,
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: await _scheduleMode(),
       matchDateTimeComponents: DateTimeComponents.time,
       payload: 'steps_reminder',
     );

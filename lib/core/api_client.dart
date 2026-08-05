@@ -19,6 +19,31 @@ class ApiClient {
     'Authorization': 'Bearer ${AppConfig.apiKey}',
   };
 
+  /// Bildirim aksiyon yanıtı (İçtim/Yapıldı) — backend event pipeline'ına yazar
+  Future<bool> submitResponse({
+    required String relatedType,
+    required int relatedId,
+    required String response,
+  }) async {
+    try {
+      final res = await _client
+          .post(
+            Uri.parse('${AppConfig.baseUrl}/responses'),
+            headers: _headers,
+            body: jsonEncode({
+              'related_type': relatedType,
+              'related_id': relatedId,
+              'response': response,
+            }),
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+      return res.statusCode == 201;
+    } catch (e) {
+      debugPrint('❌ submitResponse error: $e');
+      return false;
+    }
+  }
+
   /// Health check - backend bağlı mı?
   Future<bool> checkHealth() async {
     try {
