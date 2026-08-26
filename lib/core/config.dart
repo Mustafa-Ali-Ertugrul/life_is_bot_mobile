@@ -7,8 +7,12 @@ class AppConfig {
     defaultValue: 'http://10.0.2.2:8080/api',
   );
 
-  // Development API Key (backend .env'deki API_KEY_FALLBACK)
-  static const String apiKey = 'test-key-12345';
+  // --dart-define=PROVISIONING_KEY=... ile ezilebilir
+  // Cihaz JWT'si almak için kullanılır (backend .env'deki PROVISIONING_KEY)
+  static const String provisioningKey = String.fromEnvironment(
+    'PROVISIONING_KEY',
+    defaultValue: 'test-key-12345',
+  );
 
   static const int timeoutSeconds = 10;
 }

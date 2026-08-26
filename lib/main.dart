@@ -26,10 +26,18 @@ void main() async {
     await NotificationService.scheduleStepReminder();
   }
 
+  // --dart-define=TEST_BOT_NOTIFICATIONS=true ile her bot için test bildirimi
+  const testBots = bool.fromEnvironment('TEST_BOT_NOTIFICATIONS');
+  if (testBots) {
+    await NotificationService.showTestBotNotifications();
+  }
+
   // İlk açılışta 20 soruluk değerlendirme testi
+  final api = ApiClient();
+  await api.init();
+
   Widget home = const HomeScreen();
   if (!(prefs.getBool('onboarding_done') ?? false)) {
-    final api = ApiClient();
     if (await api.checkHealth()) {
       home = const OnboardingScreen();
     }
@@ -37,28 +45,64 @@ void main() async {
 
   // Tema: onboarding'de seçilen cinsiyete göre (varsayılan erkek)
   final female = (prefs.getString('user_gender') ?? 'male') == 'female';
+  final themeModeStr = prefs.getString('theme_mode') ?? 'system';
+  ThemeMode themeMode = ThemeMode.system;
+  if (themeModeStr == 'light') themeMode = ThemeMode.light;
+  if (themeModeStr == 'dark') themeMode = ThemeMode.dark;
 
-  runApp(MyApp(home: home, female: female));
+  runApp(MyApp(home: home, female: female, initialThemeMode: themeMode));
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key, required this.home, this.female = false});
+class MyApp extends StatefulWidget {
+  const MyApp({super.key, required this.home, this.female = false, this.initialThemeMode = ThemeMode.system});
 
   final Widget home;
   final bool female;
+  final ThemeMode initialThemeMode;
+
+  static void setThemeMode(BuildContext context, ThemeMode mode) {
+    final state = context.findAncestorStateOfType<_MyAppState>();
+    state?.setThemeMode(mode);
+  }
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  late ThemeMode _themeMode;
+
+  @override
+  void initState() {
+    super.initState();
+    _themeMode = widget.initialThemeMode;
+  }
+
+  void setThemeMode(ThemeMode mode) {
+    setState(() {
+      _themeMode = mode;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final seedColor = widget.female ? AppTheme.femaleColor : AppTheme.maleColor;
     return MaterialApp(
       title: 'Life Is Bot',
       navigatorKey: AppNavigator.key,
       theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: seedColor),
+        useMaterial3: true,
+      ),
+      darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: female ? AppTheme.femaleColor : AppTheme.maleColor,
+          seedColor: seedColor,
+          brightness: Brightness.dark,
         ),
         useMaterial3: true,
       ),
-      home: home,
+      themeMode: _themeMode,
+      home: widget.home,
       debugShowCheckedModeBanner: false,
     );
   }

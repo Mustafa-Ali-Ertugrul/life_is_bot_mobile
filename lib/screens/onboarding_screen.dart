@@ -173,7 +173,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.maleColor),
           ),
           const SizedBox(height: 8),
-          LinearProgressIndicator(value: (index + 1) / total, backgroundColor: Colors.grey.shade300),
+          LinearProgressIndicator(value: (index + 1) / total, backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest),
           const SizedBox(height: 24),
           SizedBox(
             height: 140,

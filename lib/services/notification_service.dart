@@ -1,12 +1,16 @@
 // lib/services/notification_service.dart
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tz;
 import '../core/api_client.dart';
 import '../core/app_navigator.dart';
 import '../models/medication.dart';
 import '../models/habit.dart';
+import '../models/sport_plan.dart';
+import '../models/supplement_plan.dart';
 
 /// Uygulama kapalıyken bildirim aksiyonlarını işler (background isolate)
 @pragma('vm:entry-point')
@@ -18,7 +22,6 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
 
-  /// Exposed for foreground service channel creation.
   static FlutterLocalNotificationsPlugin get localNotifications =>
       _notifications;
 
@@ -28,10 +31,13 @@ class NotificationService {
   static Future<void> init() async {
     if (_initialized) return;
 
-    // Timezone başlat
-    tz.initializeTimeZones();
-    final timeZoneName = await FlutterTimezone.getLocalTimezone();
-    tz.setLocalLocation(tz.getLocation(timeZoneName.identifier));
+    try {
+      tz.initializeTimeZones();
+      final timeZoneName = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(timeZoneName.identifier));
+    } catch (e) {
+      debugPrint('⚠️ Timezone set error: $e');
+    }
 
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
@@ -43,9 +49,7 @@ class NotificationService {
       onDidReceiveBackgroundNotificationResponse: backgroundNotificationHandler,
     );
 
-    // Android 13+ için bildirim kanalı oluştur
     await _createNotificationChannels();
-
     _initialized = true;
   }
 
@@ -72,6 +76,14 @@ class NotificationService {
       relatedType = 'habit';
       relatedId = int.tryParse(actionId.split('_').last);
       responseType = actionId.startsWith('habit_done_') ? 'done' : 'not_done';
+    } else if (actionId.startsWith('sport_done_') || actionId.startsWith('sport_not_')) {
+      relatedType = 'sport_plan';
+      relatedId = int.tryParse(actionId.split('_').last);
+      responseType = actionId.startsWith('sport_done_') ? 'done' : 'not_done';
+    } else if (actionId.startsWith('supp_done_') || actionId.startsWith('supp_not_')) {
+      relatedType = 'supplement_plan';
+      relatedId = int.tryParse(actionId.split('_').last);
+      responseType = actionId.startsWith('supp_done_') ? 'done' : 'not_done';
     }
 
     if (relatedId == null || responseType == null || relatedType == null) return;
@@ -95,64 +107,116 @@ class NotificationService {
     return null;
   }
 
-  /// Bildirim kanalları oluştur
+  /// Bildirim kanalları oluştur (Importance.max & Alarm sesi kullanımı ile 10 sn tam çalma)
   static Future<void> _createNotificationChannels() async {
-    await _notifications
+    final androidImpl = _notifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(
-          const AndroidNotificationChannel(
-            'medications',
-            'İlaç Hatırlatmaları',
-            description: 'İlaç alma hatırlatmaları',
-            importance: Importance.max,
-          ),
-        );
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (androidImpl == null) return;
 
-    await _notifications
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(
-          const AndroidNotificationChannel(
-            'habits',
-            'Rutin Hatırlatmaları',
-            description: 'Günlük rutin hatırlatmaları',
-            importance: Importance.high,
-          ),
-        );
+    const customSound = RawResourceAndroidNotificationSound('notification_sound');
 
-    await _notifications
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(
-          const AndroidNotificationChannel(
-            'steps',
-            'Adım Hatırlatmaları',
-            description: 'Günlük adım hedefi hatırlatmaları',
-            importance: Importance.defaultImportance,
-          ),
-        );
+    await androidImpl.createNotificationChannel(
+      const AndroidNotificationChannel(
+        'medications_v4',
+        'İlaç Hatırlatmaları',
+        description: 'İlaç alma hatırlatmaları',
+        importance: Importance.max,
+        playSound: true,
+        sound: customSound,
+        enableVibration: true,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
+      ),
+    );
+
+    await androidImpl.createNotificationChannel(
+      const AndroidNotificationChannel(
+        'habits_v4',
+        'Rutin Hatırlatmaları',
+        description: 'Günlük rutin hatırlatmaları',
+        importance: Importance.max,
+        playSound: true,
+        sound: customSound,
+        enableVibration: true,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
+      ),
+    );
+
+    await androidImpl.createNotificationChannel(
+      const AndroidNotificationChannel(
+        'sport_v4',
+        'Spor Hatırlatmaları',
+        description: 'Spor planı hatırlatmaları',
+        importance: Importance.max,
+        playSound: true,
+        sound: customSound,
+        enableVibration: true,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
+      ),
+    );
+
+    await androidImpl.createNotificationChannel(
+      const AndroidNotificationChannel(
+        'supplement_v4',
+        'Takviye Hatırlatmaları',
+        description: 'Supplement / Takviye alma hatırlatmaları',
+        importance: Importance.max,
+        playSound: true,
+        sound: customSound,
+        enableVibration: true,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
+      ),
+    );
+
+    await androidImpl.createNotificationChannel(
+      const AndroidNotificationChannel(
+        'steps_v4',
+        'Adım Hatırlatmaları',
+        description: 'Günlük adım hedefi hatırlatmaları',
+        importance: Importance.high,
+        playSound: true,
+        sound: customSound,
+        enableVibration: true,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
+      ),
+    );
   }
 
-  /// İzin iste (Android 13+)
+  /// İzin iste (Android 13+ bildirim & exact alarm izinleri)
   static Future<bool> requestPermission() async {
-    final result = await _notifications
+    await Permission.notification.request();
+    final androidImpl = _notifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
-    return result ?? false;
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (androidImpl == null) return false;
+
+    final notifGranted = await androidImpl.requestNotificationsPermission();
+    try {
+      await androidImpl.requestExactAlarmsPermission();
+    } catch (_) {}
+
+    return notifGranted ?? false;
   }
 
-  /// İzin durumuna göre exact/inexact zamanlama modu seçer
+  /// Sistem ayarlarındaki bildirim izin sayfasını aç
+  static Future<void> openNotificationSettings() async {
+    await openAppSettings();
+  }
+
+  /// İzin durumuna göre alarmClock / exact modu seçer (MIUI/Doze modunu aşmak için alarmClock)
   static Future<AndroidScheduleMode> _scheduleMode() async {
-    final canExact = await _notifications
-            .resolvePlatformSpecificImplementation<
-                AndroidFlutterLocalNotificationsPlugin>()
-            ?.canScheduleExactNotifications() ??
-        false;
-    return canExact
-        ? AndroidScheduleMode.exactAllowWhileIdle
-        : AndroidScheduleMode.inexactAllowWhileIdle;
+    try {
+      final canExact = await _notifications
+              .resolvePlatformSpecificImplementation<
+                  AndroidFlutterLocalNotificationsPlugin>()
+              ?.canScheduleExactNotifications() ??
+          false;
+      return canExact
+          ? AndroidScheduleMode.alarmClock
+          : AndroidScheduleMode.inexactAllowWhileIdle;
+    } catch (e) {
+      return AndroidScheduleMode.inexactAllowWhileIdle;
+    }
   }
 
   /// İlaç hatırlatması zamanla (her gün tekrarlanır)
@@ -162,19 +226,25 @@ class NotificationService {
     final timeParts = medication.reminderTime.split(':');
     final hour = int.parse(timeParts[0]);
     final minute = int.parse(timeParts[1]);
+    final nextTime = _nextInstanceOfTime(hour, minute);
 
     await _notifications.zonedSchedule(
-      medication.id,
+      1000 + medication.id,
       '💊 İlaç Hatırlatması',
       '${medication.name} alma zamanı geldi!',
-      _nextInstanceOfTime(hour, minute),
+      nextTime,
       NotificationDetails(
         android: AndroidNotificationDetails(
-          'medications',
+          'medications_v4',
           'İlaç Hatırlatmaları',
           channelDescription: 'İlaç alma hatırlatmaları',
           importance: Importance.max,
-          priority: Priority.high,
+          priority: Priority.max,
+          visibility: NotificationVisibility.public,
+          playSound: true,
+          sound: const RawResourceAndroidNotificationSound('notification_sound'),
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+          enableVibration: true,
           actions: [
             AndroidNotificationAction(
               'med_taken_${medication.id}',
@@ -203,20 +273,25 @@ class NotificationService {
     final hour = int.parse(timeParts[0]);
     final minute = int.parse(timeParts[1]);
 
-    // Her gün için ayrı bildirim zamanla
     for (final day in habit.days) {
+      final nextTime = _nextInstanceOfDay(day, hour, minute);
       await _notifications.zonedSchedule(
-        habit.id * 10 + day, // Benzersiz ID
+        20000 + habit.id * 10 + day,
         '✅ Rutin Hatırlatması',
         '${habit.name} zamanı geldi!',
-        _nextInstanceOfDay(day, hour, minute),
+        nextTime,
         NotificationDetails(
           android: AndroidNotificationDetails(
-            'habits',
+            'habits_v4',
             'Rutin Hatırlatmaları',
             channelDescription: 'Günlük rutin hatırlatmaları',
-            importance: Importance.high,
-            priority: Priority.high,
+            importance: Importance.max,
+            priority: Priority.max,
+            visibility: NotificationVisibility.public,
+            playSound: true,
+            sound: const RawResourceAndroidNotificationSound('notification_sound'),
+            audioAttributesUsage: AudioAttributesUsage.alarm,
+            enableVibration: true,
             actions: [
               AndroidNotificationAction(
                 'habit_done_${habit.id}',
@@ -238,6 +313,106 @@ class NotificationService {
     }
   }
 
+  /// Spor hatırlatması zamanla (seçili günlerde)
+  static Future<void> scheduleSportReminder({
+    required SportPlan plan,
+  }) async {
+    final days = plan.daysOfWeek
+        .split(',')
+        .map((e) => int.tryParse(e.trim()))
+        .whereType<int>()
+        .toList();
+
+    for (final day in days) {
+      final nextTime = _nextInstanceOfDay(day, plan.targetHour, plan.targetMinute);
+      await _notifications.zonedSchedule(
+        30000 + plan.id * 10 + day,
+        '🏋️ Spor Hatırlatması',
+        '${plan.sportType} antrenmanı zamanı geldi!',
+        nextTime,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            'sport_v4',
+            'Spor Hatırlatmaları',
+            channelDescription: 'Spor planı hatırlatmaları',
+            importance: Importance.max,
+            priority: Priority.max,
+            visibility: NotificationVisibility.public,
+            playSound: true,
+            sound: const RawResourceAndroidNotificationSound('notification_sound'),
+            audioAttributesUsage: AudioAttributesUsage.alarm,
+            enableVibration: true,
+            actions: [
+              AndroidNotificationAction(
+                'sport_done_${plan.id}',
+                'Yaptım ✅',
+                cancelNotification: true,
+              ),
+              AndroidNotificationAction(
+                'sport_not_${plan.id}',
+                'Yapmadım',
+                cancelNotification: true,
+              ),
+            ],
+          ),
+        ),
+        androidScheduleMode: await _scheduleMode(),
+        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+        payload: 'sport_${plan.id}',
+      );
+    }
+  }
+
+  /// Supplement hatırlatması zamanla (seçili günlerde)
+  static Future<void> scheduleSupplementReminder({
+    required SupplementPlan supp,
+  }) async {
+    final days = supp.daysOfWeek
+        .split(',')
+        .map((e) => int.tryParse(e.trim()))
+        .whereType<int>()
+        .toList();
+
+    for (final day in days) {
+      final nextTime = _nextInstanceOfDay(day, supp.targetHour, supp.targetMinute);
+      await _notifications.zonedSchedule(
+        40000 + supp.id * 10 + day,
+        '🧪 Supplement Hatırlatması',
+        '${supp.name} ${supp.dose != null ? "(${supp.dose})" : ""} alma zamanı!',
+        nextTime,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            'supplement_v4',
+            'Takviye Hatırlatmaları',
+            channelDescription: 'Supplement / Takviye alma hatırlatmaları',
+            importance: Importance.max,
+            priority: Priority.max,
+            visibility: NotificationVisibility.public,
+            playSound: true,
+            sound: const RawResourceAndroidNotificationSound('notification_sound'),
+            audioAttributesUsage: AudioAttributesUsage.alarm,
+            enableVibration: true,
+            actions: [
+              AndroidNotificationAction(
+                'supp_done_${supp.id}',
+                'Aldım ✅',
+                cancelNotification: true,
+              ),
+              AndroidNotificationAction(
+                'supp_not_${supp.id}',
+                'Almadım',
+                cancelNotification: true,
+              ),
+            ],
+          ),
+        ),
+        androidScheduleMode: await _scheduleMode(),
+        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+        payload: 'supplement_${supp.id}',
+      );
+    }
+  }
+
   /// Adım hatırlatması (her gün 21:00)
   static Future<void> scheduleStepReminder() async {
     await _notifications.zonedSchedule(
@@ -245,12 +420,18 @@ class NotificationService {
       '🚶 Adım Hatırlatması',
       'Bugünkü adım hedefine ulaştın mı?',
       _nextInstanceOfTime(21, 0),
-      const NotificationDetails(
+      NotificationDetails(
         android: AndroidNotificationDetails(
-          'steps',
+          'steps_v4',
           'Adım Hatırlatmaları',
           channelDescription: 'Günlük adım hedefi hatırlatmaları',
-          importance: Importance.defaultImportance,
+          importance: Importance.high,
+          priority: Priority.high,
+          visibility: NotificationVisibility.public,
+          playSound: true,
+          sound: const RawResourceAndroidNotificationSound('notification_sound'),
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+          enableVibration: true,
         ),
       ),
       androidScheduleMode: await _scheduleMode(),
@@ -259,15 +440,62 @@ class NotificationService {
     );
   }
 
+  /// Test: her bot için anında bildirim göster (debug amaçlı)
+  static Future<void> showTestBotNotifications() async {
+    await _notifications.show(
+      7101,
+      '💊 Test: İlaç Botu',
+      'İlaç hatırlatması test bildirimi',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'medications_v4',
+          'İlaç Hatırlatmaları',
+          channelDescription: 'İlaç alma hatırlatmaları',
+          importance: Importance.max,
+          priority: Priority.max,
+          visibility: NotificationVisibility.public,
+          playSound: true,
+          sound: RawResourceAndroidNotificationSound('notification_sound'),
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+          enableVibration: true,
+        ),
+      ),
+    );
+  }
+
   /// İlaç bildirimini iptal et
   static Future<void> cancelMedicationReminder(int medicationId) async {
-    await _notifications.cancel(medicationId);
+    await _notifications.cancel(1000 + medicationId);
   }
 
   /// Rutin bildirimlerini iptal et
   static Future<void> cancelHabitReminders(int habitId, List<int> days) async {
     for (final day in days) {
-      await _notifications.cancel(habitId * 10 + day);
+      await _notifications.cancel(20000 + habitId * 10 + day);
+    }
+  }
+
+  /// Spor bildirimlerini iptal et
+  static Future<void> cancelSportReminders(int planId, String daysOfWeek) async {
+    final days = daysOfWeek
+        .split(',')
+        .map((e) => int.tryParse(e.trim()))
+        .whereType<int>()
+        .toList();
+    for (final day in days) {
+      await _notifications.cancel(30000 + planId * 10 + day);
+    }
+  }
+
+  /// Supplement bildirimlerini iptal et
+  static Future<void> cancelSupplementReminders(int suppId, String daysOfWeek) async {
+    final days = daysOfWeek
+        .split(',')
+        .map((e) => int.tryParse(e.trim()))
+        .whereType<int>()
+        .toList();
+    for (final day in days) {
+      await _notifications.cancel(40000 + suppId * 10 + day);
     }
   }
 
@@ -276,7 +504,7 @@ class NotificationService {
     await _notifications.cancelAll();
   }
 
-  /// İlaç hatırlatmalarını toplu aç/kapat
+  /// İlaç hatırlatmalarını toplu güncelle
   static Future<void> setMedicationReminders(
     bool enabled,
     List<Medication> medications,
@@ -290,13 +518,36 @@ class NotificationService {
     }
   }
 
-  /// Rutin hatırlatmalarını toplu aç/kapat
+  /// Rutin hatırlatmalarını toplu güncelle
   static Future<void> setHabitReminders(bool enabled, List<Habit> habits) async {
     for (final habit in habits) {
       if (enabled) {
         await scheduleHabitReminder(habit: habit);
       } else {
         await cancelHabitReminders(habit.id, habit.days);
+      }
+    }
+  }
+
+  /// Spor hatırlatmalarını toplu güncelle
+  static Future<void> setSportReminders(bool enabled, List<SportPlan> plans) async {
+    for (final plan in plans) {
+      if (enabled) {
+        await scheduleSportReminder(plan: plan);
+      } else {
+        await cancelSportReminders(plan.id, plan.daysOfWeek);
+      }
+    }
+  }
+
+  /// Supplement hatırlatmalarını toplu güncelle
+  static Future<void> setSupplementReminders(
+      bool enabled, List<SupplementPlan> supps) async {
+    for (final supp in supps) {
+      if (enabled) {
+        await scheduleSupplementReminder(supp: supp);
+      } else {
+        await cancelSupplementReminders(supp.id, supp.daysOfWeek);
       }
     }
   }
@@ -341,8 +592,6 @@ class NotificationService {
       minute,
     );
 
-    // Pazartesi = 1, Pazar = 7
-    // DateTime.weekday: Pazartesi = 1, Pazar = 7
     while (scheduled.weekday != dayOfWeek || scheduled.isBefore(now)) {
       scheduled = scheduled.add(const Duration(days: 1));
     }
