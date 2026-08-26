@@ -10,6 +10,7 @@ import '../models/medication.dart';
 import '../services/notification_service.dart';
 import 'habits_screen.dart';
 import 'medications_screen.dart';
+import 'sport_screen.dart';
 import 'steps_screen.dart';
 import 'reports_screen.dart';
 import 'settings_screen.dart';
@@ -21,18 +22,19 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   final GoogleFitService _googleFit = GoogleFitService();
   final DatabaseService _db = DatabaseService();
   final ApiClient _api = ApiClient();
+
+  late final TabController _tabController;
 
   int _todaySteps = 0;
   int _stepGoal = 10000;
   bool _loading = true;
   bool _googleFitAvailable = false;
   bool _backendConnected = false;
-  int _medicationCount = 0;
-  int _habitCount = 0;
   int _currentStreak = 0;
   String _gender = 'male'; // 'male' -> Turkuaz, 'female' -> Yeşil
 
@@ -49,7 +51,14 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 4, vsync: this);
     _initData();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _initData() async {
@@ -139,8 +148,6 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         setState(() {
           _botPreferences = newPrefs;
-          _medicationCount = meds.length;
-          _habitCount = habits.length;
           _currentStreak = streak?['current'] ?? 0;
           _stepGoal = goal;
         });
@@ -168,12 +175,37 @@ class _HomeScreenState extends State<HomeScreen> {
 
   double get _progress => (_todaySteps / _stepGoal).clamp(0.0, 1.0);
 
+  String _getRunnerAsset() {
+    final prefix = _gender == 'female' ? 'runner_female_phase' : 'runner_phase';
+    if (_currentStreak >= 30) {
+      return 'assets/images/${prefix}_4.gif';
+    } else if (_currentStreak >= 15) {
+      return 'assets/images/${prefix}_3.gif';
+    } else if (_currentStreak >= 7) {
+      return 'assets/images/${prefix}_2.gif';
+    } else {
+      return 'assets/images/${prefix}_1.gif';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Life Is Bot'),
         backgroundColor: AppTheme.of(_gender),
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: Colors.white,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          tabs: const [
+            Tab(text: 'Koşu', icon: Icon(Icons.directions_run)),
+            Tab(text: 'Spor', icon: Icon(Icons.fitness_center)),
+            Tab(text: 'Rutin', icon: Icon(Icons.check_circle)),
+            Tab(text: 'İlaç', icon: Icon(Icons.medication)),
+          ],
+        ),
         actions: [
           // Raporlar butonu
           IconButton(
@@ -216,30 +248,34 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: () async {
-                await _refreshSteps();
-                await _loadBackendData();
-              },
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  if (_botPreferences['step_bot'] ?? true) ...[
-                    _buildStepCard(),
-                    const SizedBox(height: 16),
-                  ],
-                  _buildStreakCard(),
-                  if (_botPreferences['medication_bot'] ?? true) ...[
-                    const SizedBox(height: 16),
-                    _buildMedicationCard(),
-                  ],
-                  if (_botPreferences['habit_bot'] ?? true) ...[
-                    const SizedBox(height: 16),
-                    _buildHabitCard(),
-                  ],
-                ],
-              ),
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                _buildRunningTab(),
+                const SportScreen(embedded: true),
+                const HabitsScreen(embedded: true),
+                const MedicationsScreen(embedded: true),
+              ],
             ),
+    );
+  }
+
+  Widget _buildRunningTab() {
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _refreshSteps();
+        await _loadBackendData();
+      },
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          if (_botPreferences['step_bot'] ?? true) ...[
+            _buildStepCard(),
+            const SizedBox(height: 16),
+          ],
+          _buildStreakCard(),
+        ],
+      ),
     );
   }
 
@@ -280,147 +316,152 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: Colors.grey[800],
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
-                  const Icon(Icons.chevron_right, color: Colors.grey),
+                  Icon(Icons.chevron_right, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ],
               ),
               const SizedBox(height: 16),
               // Content Box (Ring Gauge + Divider + Runner Illustration)
               Container(
+                clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
-                  color: Colors.grey[100],
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(16),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                child: Row(
-                  children: [
-                    // Left Gauge & Metrics Area
-                    Expanded(
-                      flex: 3,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          // Circular Progress Dial
-                          SizedBox(
-                            width: 130,
-                            height: 130,
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                SizedBox(
-                                  width: 130,
-                                  height: 130,
-                                  child: CircularProgressIndicator(
-                                    value: _progress,
-                                    strokeWidth: 14,
-                                    backgroundColor: Colors.blueGrey[100],
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      _progress >= 1.0 ? Colors.green : themeColor,
-                                    ),
-                                  ),
-                                ),
-                                Column(
-                                  mainAxisSize: MainAxisSize.min,
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Left Gauge & Metrics Area
+                      Expanded(
+                        flex: 5,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              // Circular Progress Dial
+                              SizedBox(
+                                width: 120,
+                                height: 120,
+                                child: Stack(
+                                  alignment: Alignment.center,
                                   children: [
-                                    Text(
-                                      formattedSteps,
-                                      style: TextStyle(
-                                        fontSize: 26,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.grey[900],
-                                        letterSpacing: -0.5,
+                                    SizedBox.expand(
+                                      child: CircularProgressIndicator(
+                                        value: _progress,
+                                        strokeWidth: 12,
+                                        strokeCap: StrokeCap.round,
+                                        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                        valueColor: AlwaysStoppedAnimation<Color>(
+                                          _progress >= 1.0 ? Colors.green : themeColor,
+                                        ),
                                       ),
                                     ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      'Hedef: $formattedGoal',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey[700],
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Adım',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey[600],
-                                      ),
+                                    Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          formattedSteps,
+                                          style: TextStyle(
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.bold,
+                                            color: Theme.of(context).colorScheme.onSurface,
+                                            letterSpacing: -0.5,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          'Hedef: $formattedGoal',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        Text(
+                                          'Adım',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          // Percentage text at bottom right of the dial
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: Text(
-                                '$percentage%',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.grey[700],
+                              ),
+                              const SizedBox(height: 6),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: Text(
+                                    '$percentage%',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-
-                    // Vertical Divider Line
-                    Container(
-                      height: 140,
-                      width: 1,
-                      color: Colors.grey[350],
-                      margin: const EdgeInsets.symmetric(horizontal: 12),
-                    ),
-
-                    // Right Runner Illustration Area
-                    Expanded(
-                      flex: 2,
-                      child: Container(
-                        height: 150,
-                        alignment: Alignment.center,
-                        child: Image.asset(
-                          _gender == 'female'
-                              ? 'assets/images/runner_female.png'
-                              : 'assets/images/runner_male.png',
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Icon(
-                              Icons.directions_run,
-                              size: 90,
-                              color: themeColor,
-                            );
-                          },
                         ),
                       ),
-                    ),
-                  ],
+
+                      // Vertical Divider Line
+                      Container(
+                        width: 1,
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                        margin: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+
+                      // Right Runner Illustration Area (Bütün Ayaklar Kırpılmadan Kadrajda)
+                      Expanded(
+                        flex: 4,
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Center(
+                            child: Image.asset(
+                              _getRunnerAsset(),
+                              fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Icon(
+                                  Icons.directions_run,
+                                  size: 90,
+                                  color: themeColor,
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               if (!_googleFitAvailable)
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.orange[100],
+                    color: Colors.orange.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Row(
+                  child: Row(
                     children: [
-                      Icon(Icons.warning, color: Colors.orange, size: 20),
-                      SizedBox(width: 8),
+                      const Icon(Icons.warning, color: Colors.orange, size: 20),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                           "Google Fit / Health Connect bu cihazda yok. Adımlar manuel kayıtlardan okunur.",
-                          style: TextStyle(fontSize: 12),
+                          "Google Fit / Health Connect bu cihazda yok. Adımlar manuel kayıtlardan okunur.",
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
                         ),
                       ),
                     ],
@@ -447,54 +488,6 @@ class _HomeScreenState extends State<HomeScreen> {
         trailing: _backendConnected
             ? const Icon(Icons.check_circle, color: Colors.green)
             : const Icon(Icons.cloud_off, color: Colors.grey),
-      ),
-    );
-  }
-
-  Widget _buildMedicationCard() {
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.medication, color: Colors.red, size: 40),
-        title: const Text(
-          'İlaç Takibi',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-        subtitle: Text(_backendConnected
-            ? '$_medicationCount ilaç kayıtlı'
-            : 'Backend bağlı değil'),
-        trailing: _backendConnected
-            ? const Icon(Icons.check_circle, color: Colors.green)
-            : const Icon(Icons.cloud_off, color: Colors.grey),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const MedicationsScreen()),
-          ).then((_) => _loadBackendData());
-        },
-      ),
-    );
-  }
-
-  Widget _buildHabitCard() {
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.check_circle, color: Colors.green, size: 40),
-        title: const Text(
-          'Rutin Takibi',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-        subtitle: Text(_backendConnected
-            ? '$_habitCount rutin kayıtlı'
-            : 'Backend bağlı değil'),
-        trailing: _backendConnected
-            ? const Icon(Icons.chevron_right)
-            : const Icon(Icons.cloud_off, color: Colors.grey),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const HabitsScreen()),
-          ).then((_) => _loadBackendData());
-        },
       ),
     );
   }

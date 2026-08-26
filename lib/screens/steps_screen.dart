@@ -146,7 +146,7 @@ class _StepsScreenState extends State<StepsScreen> {
               title,
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.grey[600],
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -218,7 +218,14 @@ class _StepsScreenState extends State<StepsScreen> {
                     ),
                   ),
                   borderData: FlBorderData(show: false),
-                  gridData: const FlGridData(show: false),
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    getDrawingHorizontalLine: (value) => FlLine(
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.15),
+                      strokeWidth: 1,
+                    ),
+                  ),
                   barGroups: _weeklySteps.entries.toList().asMap().entries.map((entry) {
                     final index = entry.key;
                     final steps = entry.value.value;
@@ -231,7 +238,9 @@ class _StepsScreenState extends State<StepsScreen> {
                           toY: steps.toDouble(),
                           width: 20,
                           borderRadius: BorderRadius.circular(4),
-                          color: isToday ? AppTheme.of(_gender) : AppTheme.of(_gender).withOpacity(0.5),
+                          color: isToday
+                              ? AppTheme.of(_gender)
+                              : AppTheme.of(_gender).withValues(alpha: 0.75),
                         ),
                       ],
                     );
@@ -276,7 +285,7 @@ class _StepsScreenState extends State<StepsScreen> {
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: isToday ? AppTheme.of(_gender) : Colors.grey[300],
+                        color: isToday ? AppTheme.of(_gender) : Theme.of(context).colorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Center(
@@ -284,7 +293,7 @@ class _StepsScreenState extends State<StepsScreen> {
                           '${date.day}',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: isToday ? Colors.white : Colors.black87,
+                            color: isToday ? Colors.white : Theme.of(context).colorScheme.onSurface,
                           ),
                         ),
                       ),
@@ -302,7 +311,7 @@ class _StepsScreenState extends State<StepsScreen> {
                             '${date.day}.${date.month}.${date.year}',
                             style: TextStyle(
                               fontSize: 12,
-                              color: Colors.grey[600],
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ],
@@ -312,7 +321,7 @@ class _StepsScreenState extends State<StepsScreen> {
                       '$steps adım',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: steps >= 10000 ? Colors.green : Colors.black87,
+                        color: steps >= 10000 ? Colors.green : Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                     if (steps >= 10000)

@@ -2,6 +2,8 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/theme.dart';
+import 'habits_screen.dart';
+import 'medications_screen.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -105,6 +107,13 @@ class _ReportsScreenState extends State<ReportsScreen>
     final unanswered = (_dailyReport!['unanswered'] ?? 0).toInt();
     final rate = total > 0 ? (completed / total * 100).round() : 0;
 
+    if (total == 0) {
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [_buildEmptyStateCard()],
+      );
+    }
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -132,6 +141,13 @@ class _ReportsScreenState extends State<ReportsScreen>
     final rate = (_weeklyReport!['compliance_rate'] ?? 0).toInt();
     final weekStart = _weeklyReport!['week_start'] ?? '';
     final weekEnd = _weeklyReport!['week_end'] ?? '';
+
+    if (total == 0) {
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [_buildEmptyStateCard()],
+      );
+    }
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -171,6 +187,13 @@ class _ReportsScreenState extends State<ReportsScreen>
     final completed = (_monthlyReport!['total_completed'] ?? 0).toInt();
     final rate = (_monthlyReport!['completion_rate'] ?? 0).toInt();
 
+    if (total == 0) {
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [_buildEmptyStateCard()],
+      );
+    }
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -209,9 +232,9 @@ class _ReportsScreenState extends State<ReportsScreen>
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const Text(
+                Text(
                   'Mevcut Seri',
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
+                  style: TextStyle(fontSize: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ],
             ),
@@ -232,9 +255,9 @@ class _ReportsScreenState extends State<ReportsScreen>
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const Text(
+                Text(
                   'En Uzun Seri',
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
+                  style: TextStyle(fontSize: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ],
             ),
@@ -260,6 +283,54 @@ class _ReportsScreenState extends State<ReportsScreen>
     );
   }
 
+  Widget _buildEmptyStateCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            Icon(Icons.emoji_events, size: 64, color: AppTheme.of(_gender)),
+            const SizedBox(height: 12),
+            const Text(
+              'Henüz veri yok',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Bugünkü ilk rutinini tamamla, raporun burada hayat bulsun!',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                FilledButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const HabitsScreen()),
+                  ),
+                  icon: const Icon(Icons.check_circle),
+                  label: const Text('Rutin Ekle'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const MedicationsScreen()),
+                  ),
+                  icon: const Icon(Icons.medication),
+                  label: const Text('İlaç Ekle'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildProgressCard(String title, int rate, int completed, int total) {
     return Card(
       child: Padding(
@@ -272,17 +343,20 @@ class _ReportsScreenState extends State<ReportsScreen>
             ),
             const SizedBox(height: 24),
             SizedBox(
-              width: 120,
-              height: 120,
+              width: 170,
+              height: 170,
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  CircularProgressIndicator(
-                    value: rate / 100,
-                    strokeWidth: 12,
-                    backgroundColor: Colors.grey[300],
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      rate >= 80 ? Colors.green : AppTheme.of(_gender),
+                  SizedBox.expand(
+                    child: CircularProgressIndicator(
+                      value: rate / 100,
+                      strokeWidth: 14,
+                      strokeCap: StrokeCap.round,
+                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        rate >= 80 ? Colors.green : AppTheme.of(_gender),
+                      ),
                     ),
                   ),
                   Column(
@@ -291,15 +365,17 @@ class _ReportsScreenState extends State<ReportsScreen>
                       Text(
                         '%$rate',
                         style: const TextStyle(
-                          fontSize: 28,
+                          fontSize: 32,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
+                      const SizedBox(height: 2),
                       Text(
-                        '$completed/$total',
+                        '$completed / $total',
                         style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],

@@ -2,9 +2,11 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'config.dart';
 import '../models/habit.dart';
 import '../models/medication.dart';
+import '../models/sport_plan.dart';
 
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
@@ -12,11 +14,50 @@ class ApiClient {
   ApiClient._internal();
 
   final http.Client _client = http.Client();
+  static const String _tokenKey = 'api_access_token';
+  String? _accessToken;
+
+  /// Önbellekteki token'ı yükle ve provisioning key ile taze JWT al
+  Future<bool> init() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString(_tokenKey);
+    if (stored != null && stored.isNotEmpty) {
+      _accessToken = stored;
+    }
+    final ok = await _fetchToken(prefs);
+    return ok || _accessToken != null;
+  }
+
+  Future<bool> _fetchToken(SharedPreferences prefs) async {
+    if (AppConfig.provisioningKey.isEmpty) return false;
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('${AppConfig.baseUrl}/auth/token'),
+            headers: {'X-Provisioning-Key': AppConfig.provisioningKey},
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+      if (response.statusCode != 200) {
+        debugPrint('⚠️ Token fetch failed: ${response.statusCode}');
+        return false;
+      }
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final token = data['access_token'] as String?;
+      if (token == null || token.isEmpty) return false;
+      _accessToken = token;
+      await prefs.setString(_tokenKey, token);
+      return true;
+    } catch (e) {
+      debugPrint('❌ Token fetch error: $e');
+      return false;
+    }
+  }
 
   /// Ortak header'lar
   Map<String, String> get _headers => {
     'Content-Type': 'application/json',
-    'Authorization': 'Bearer ${AppConfig.apiKey}',
+    if (_accessToken != null && _accessToken!.isNotEmpty)
+      'Authorization': 'Bearer $_accessToken',
   };
 
   /// Bildirim aksiyon yanıtı (İçtim/Yapıldı) — backend event pipeline'ına yazar
@@ -208,6 +249,132 @@ class ApiClient {
     }
   }
 
+  /// Spor planı listesi
+  Future<List<Map<String, dynamic>>> getSportPlans() async {
+    try {
+      final response = await _client
+          .get(
+            Uri.parse('${AppConfig.baseUrl}/sport'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        // PaginatedResponse formatı: {"items": [...], "total": N}
+        if (data is Map && data.containsKey('items')) {
+          return List<Map<String, dynamic>>.from(data['items']);
+        }
+        return List<Map<String, dynamic>>.from(data);
+      }
+      debugPrint('⚠️ Sport API error: ${response.statusCode}');
+      return [];
+    } catch (e) {
+      debugPrint('❌ Error fetching sport plans: $e');
+      return [];
+    }
+  }
+
+  /// Spor planı ekle
+  Future<SportPlan?> createSportPlan(SportPlan plan) async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('${AppConfig.baseUrl}/sport'),
+            headers: _headers,
+            body: jsonEncode(plan.toJson()),
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return SportPlan.fromJson(jsonDecode(response.body));
+      }
+      return null;
+    } catch (e) {
+      debugPrint('❌ Error creating sport plan: $e');
+      return null;
+    }
+  }
+
+  /// Spor planı sil (backend soft-delete: is_active=false)
+  Future<bool> deleteSportPlan(int id) async {
+    try {
+      final response = await _client
+          .delete(
+            Uri.parse('${AppConfig.baseUrl}/sport/$id'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      debugPrint('❌ Error deleting sport plan: $e');
+      return false;
+    }
+  }
+
+  /// Supplement (takviye) listesi
+  Future<List<Map<String, dynamic>>> getSupplementPlans() async {
+    try {
+      final response = await _client
+          .get(
+            Uri.parse('${AppConfig.baseUrl}/supplement'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map && data.containsKey('items')) {
+          return List<Map<String, dynamic>>.from(data['items']);
+        }
+        return List<Map<String, dynamic>>.from(data);
+      }
+      return [];
+    } catch (e) {
+      debugPrint('❌ Error fetching supplement plans: $e');
+      return [];
+    }
+  }
+
+  /// Supplement (takviye) ekle
+  Future<Map<String, dynamic>?> createSupplementPlan(Map<String, dynamic> body) async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('${AppConfig.baseUrl}/supplement'),
+            headers: _headers,
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('❌ Error creating supplement plan: $e');
+      return null;
+    }
+  }
+
+  /// Supplement (takviye) sil
+  Future<bool> deleteSupplementPlan(int id) async {
+    try {
+      final response = await _client
+          .delete(
+            Uri.parse('${AppConfig.baseUrl}/supplement/$id'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      debugPrint('❌ Error deleting supplement plan: $e');
+      return false;
+    }
+  }
+
   /// Adım hedefini al
   Future<int> getStepGoal() async {
     try {
@@ -303,6 +470,36 @@ class ApiClient {
       return null;
     } catch (e) {
       debugPrint('❌ Error fetching monthly report: $e');
+      return null;
+    }
+  }
+
+  /// Aylık gün-gün rapor (bot bazında): planlı/tamamlanmış günler
+  Future<Map<String, dynamic>?> getMonthDays(
+    int year,
+    int month,
+    String botKey,
+  ) async {
+    try {
+      final uri = Uri.parse(
+        '${AppConfig.baseUrl}/reports/monthly/days',
+      ).replace(
+        queryParameters: {
+          'year': '$year',
+          'month': '$month',
+          'bot_key': botKey,
+        },
+      );
+      final response = await _client
+          .get(uri, headers: _headers)
+          .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('❌ Error fetching month days: $e');
       return null;
     }
   }

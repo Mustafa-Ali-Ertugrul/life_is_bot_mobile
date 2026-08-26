@@ -16,6 +16,7 @@ import 'notification_service.dart';
 ///
 /// Periodically checks that scheduled alarms are still active and
 /// re-schedules any that may have been lost.
+@pragma('vm:entry-point')
 class ForegroundService {
   static const int _notificationId = 1001;
   static const String _channelId = 'lifeisbot_foreground';

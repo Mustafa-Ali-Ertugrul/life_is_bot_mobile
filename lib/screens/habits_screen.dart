@@ -5,9 +5,12 @@ import '../core/api_client.dart';
 import '../core/theme.dart';
 import '../models/habit.dart';
 import '../services/notification_service.dart';
+import '../widgets/monthly_calendar_card.dart';
 
 class HabitsScreen extends StatefulWidget {
-  const HabitsScreen({super.key});
+  const HabitsScreen({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   State<HabitsScreen> createState() => _HabitsScreenState();
@@ -18,14 +21,68 @@ class _HabitsScreenState extends State<HabitsScreen> {
   List<Habit> _habits = [];
   bool _loading = true;
   String _gender = 'male';
+  double? _completionRate;
+  Set<int> _scheduledDays = {};
+  Set<int> _completedDays = {};
 
   @override
   void initState() {
     super.initState();
     _loadHabits();
+    _loadMonthlyRate();
+    _loadMonthDays();
     AppTheme.loadGender().then((g) {
       if (mounted) setState(() => _gender = g);
     });
+  }
+
+  Future<void> _loadMonthDays() async {
+    final now = DateTime.now();
+    final data = await _api.getMonthDays(now.year, now.month, 'habit_bot');
+    if (data == null || !mounted) return;
+    setState(() {
+      _scheduledDays = _parseDays(data['scheduled_days'], now);
+      _completedDays = _parseDays(data['completed_days'], now);
+    });
+  }
+
+  Set<int> _parseDays(Object? value, DateTime now) {
+    final days = <int>{};
+    if (value is List) {
+      for (final item in value) {
+        final parsed = DateTime.tryParse('$item');
+        if (parsed != null &&
+            parsed.year == now.year &&
+            parsed.month == now.month) {
+          days.add(parsed.day);
+        }
+      }
+    }
+    return days;
+  }
+
+  Future<void> _loadMonthlyRate() async {
+    final report = await _api.getMonthlyReport();
+    if (report == null) return;
+    final botStats = report['bot_stats'];
+    if (botStats is! List) return;
+    for (final stat in botStats.cast<Map<String, dynamic>>()) {
+      if (stat['bot_key'] == 'habit_bot') {
+        final rate = (stat['completion_rate'] as num?)?.toDouble();
+        if (rate != null && mounted) {
+          setState(() => _completionRate = rate);
+        }
+        return;
+      }
+    }
+  }
+
+  Set<int> get _markedWeekdays {
+    final days = <int>{};
+    for (final habit in _habits) {
+      days.addAll(habit.days);
+    }
+    return days;
   }
 
   Future<void> _loadHabits() async {
@@ -33,6 +90,10 @@ class _HabitsScreenState extends State<HabitsScreen> {
 
     final data = await _api.getHabits();
     final habits = data.map((json) => Habit.fromJson(json)).toList();
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('habit_reminders') ?? true) {
+      await NotificationService.setHabitReminders(true, habits);
+    }
 
     setState(() {
       _habits = habits;
@@ -182,13 +243,44 @@ class _HabitsScreenState extends State<HabitsScreen> {
     }
   }
 
+  String _getRoutineAsset() {
+    final prefix = _gender == 'female' ? 'routine_female_phase' : 'routine_phase';
+    final completedCount = _completedDays.length;
+    if (completedCount >= 15 || (_completionRate != null && _completionRate! >= 75)) {
+      return 'assets/images/${prefix}_4.gif';
+    } else if (completedCount >= 10 || (_completionRate != null && _completionRate! >= 50)) {
+      return 'assets/images/${prefix}_3.gif';
+    } else if (completedCount >= 5 || (_completionRate != null && _completionRate! >= 25)) {
+      return 'assets/images/${prefix}_2.gif';
+    } else {
+      return 'assets/images/${prefix}_1.gif';
+    }
+  }
+
+  Widget _buildRoutineCharacterWidget() {
+    final asset = _getRoutineAsset();
+    return Image.asset(
+      asset,
+      fit: BoxFit.contain,
+      errorBuilder: (context, error, stackTrace) {
+        return Icon(
+          Icons.check_circle,
+          size: 64,
+          color: AppTheme.of(_gender),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Rutin Takibi'),
-        backgroundColor: AppTheme.of(_gender),
-      ),
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              title: const Text('Rutin Takibi'),
+              backgroundColor: AppTheme.of(_gender),
+            ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddDialog,
         backgroundColor: AppTheme.of(_gender),
@@ -196,33 +288,35 @@ class _HabitsScreenState extends State<HabitsScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _habits.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.check_circle_outline, size: 64, color: Colors.grey),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Henüz rutin eklenmedi',
-                        style: TextStyle(fontSize: 18, color: Colors.grey),
-                      ),
-                      const SizedBox(height: 8),
-                      TextButton(
-                        onPressed: _showAddDialog,
-                        child: const Text('İlk rutinini ekle'),
-                      ),
-                    ],
+          : RefreshIndicator(
+              onRefresh: () async {
+                await Future.wait([
+                  _loadHabits(),
+                  _loadMonthDays(),
+                  _loadMonthlyRate(),
+                ]);
+              },
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  MonthlyCalendarCard(
+                    title: 'Rutin Takvimi',
+                    icon: Icons.check_circle,
+                    accentColor: AppTheme.of(_gender),
+                    markedWeekdays: _markedWeekdays,
+                    scheduledDays: _scheduledDays,
+                    completedDays: _completedDays,
+                    rightChild: _buildRoutineCharacterWidget(),
+                    headerTrailing: _completionRate != null
+                        ? 'Bu ay %${_completionRate!.round()}'
+                        : null,
                   ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadHabits,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _habits.length,
-                    itemBuilder: (context, index) {
-                      final habit = _habits[index];
-                      return Card(
+                  const SizedBox(height: 16),
+                  if (_habits.isEmpty)
+                    _buildEmptyState()
+                  else
+                    for (final habit in _habits)
+                      Card(
                         margin: const EdgeInsets.only(bottom: 8),
                         child: ListTile(
                           leading: const Icon(
@@ -248,10 +342,32 @@ class _HabitsScreenState extends State<HabitsScreen> {
                             onPressed: () => _showDeleteDialog(habit),
                           ),
                         ),
-                      );
-                    },
-                  ),
-                ),
+                      ),
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 40),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.check_circle_outline, size: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          const Text(
+            'Henüz rutin eklenmedi',
+            style: TextStyle(fontSize: 18, color: Colors.grey),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: _showAddDialog,
+            child: const Text('İlk rutinini ekle'),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -4,9 +4,12 @@ import '../core/api_client.dart';
 import '../core/theme.dart';
 import '../models/medication.dart';
 import '../services/notification_service.dart';
+import '../widgets/monthly_calendar_card.dart';
 
 class MedicationsScreen extends StatefulWidget {
-  const MedicationsScreen({super.key});
+  const MedicationsScreen({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   State<MedicationsScreen> createState() => _MedicationsScreenState();
@@ -17,20 +20,70 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
   List<Medication> _medications = [];
   bool _loading = true;
   String _gender = 'male';
+  double? _completionRate;
+  Set<int> _scheduledDays = {};
+  Set<int> _completedDays = {};
 
   @override
   void initState() {
     super.initState();
     _loadMedications();
+    _loadMonthlyRate();
+    _loadMonthDays();
     AppTheme.loadGender().then((g) {
       if (mounted) setState(() => _gender = g);
     });
+  }
+
+  Future<void> _loadMonthDays() async {
+    final now = DateTime.now();
+    final data = await _api.getMonthDays(now.year, now.month, 'medication_bot');
+    if (data == null || !mounted) return;
+    setState(() {
+      _scheduledDays = _parseDays(data['scheduled_days'], now);
+      _completedDays = _parseDays(data['completed_days'], now);
+    });
+  }
+
+  Set<int> _parseDays(Object? value, DateTime now) {
+    final days = <int>{};
+    if (value is List) {
+      for (final item in value) {
+        final parsed = DateTime.tryParse('$item');
+        if (parsed != null &&
+            parsed.year == now.year &&
+            parsed.month == now.month) {
+          days.add(parsed.day);
+        }
+      }
+    }
+    return days;
+  }
+
+  Future<void> _loadMonthlyRate() async {
+    final report = await _api.getMonthlyReport();
+    if (report == null) return;
+    final botStats = report['bot_stats'];
+    if (botStats is! List) return;
+    for (final stat in botStats.cast<Map<String, dynamic>>()) {
+      if (stat['bot_key'] == 'medication_bot') {
+        final rate = (stat['completion_rate'] as num?)?.toDouble();
+        if (rate != null && mounted) {
+          setState(() => _completionRate = rate);
+        }
+        return;
+      }
+    }
   }
 
   Future<void> _loadMedications() async {
     setState(() => _loading = true);
     final data = await _api.getMedications();
     final medications = data.map((json) => Medication.fromJson(json)).toList();
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('medication_reminders') ?? true) {
+      await NotificationService.setMedicationReminders(true, medications);
+    }
     setState(() {
       _medications = medications;
       _loading = false;
@@ -139,13 +192,20 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
     }
   }
 
+  Set<int> get _markedWeekdays {
+    if (_medications.isEmpty) return {};
+    return {1, 2, 3, 4, 5, 6, 7};
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('İlaç Takibi'),
-        backgroundColor: AppTheme.of(_gender),
-      ),
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              title: const Text('İlaç Takibi'),
+              backgroundColor: AppTheme.of(_gender),
+            ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddDialog,
         backgroundColor: AppTheme.of(_gender),
@@ -153,26 +213,72 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _medications.isEmpty
-              ? const Center(child: Text('Henüz ilaç eklenmedi'))
-              : RefreshIndicator(
-                  onRefresh: _loadMedications,
-                  child: ListView.builder(
-                    itemCount: _medications.length,
-                    itemBuilder: (context, index) {
-                      final medication = _medications[index];
-                      return ListTile(
+          : RefreshIndicator(
+              onRefresh: () async {
+                await Future.wait([
+                  _loadMedications(),
+                  _loadMonthDays(),
+                  _loadMonthlyRate(),
+                ]);
+              },
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  MonthlyCalendarCard(
+                    title: 'İlaç Takvimi',
+                    icon: Icons.medication,
+                    accentColor: AppTheme.of(_gender),
+                    markedWeekdays: _markedWeekdays,
+                    scheduledDays: _scheduledDays,
+                    completedDays: _completedDays,
+                    headerTrailing: _completionRate != null
+                        ? 'Bu ay %${_completionRate!.round()}'
+                        : null,
+                  ),
+                  const SizedBox(height: 16),
+                  if (_medications.isEmpty)
+                    _buildEmptyState()
+                  else
+                    for (final medication in _medications)
+                      ListTile(
                         leading: const Icon(Icons.medication, color: Colors.red),
                         title: Text(medication.name),
-                        subtitle: Text('${medication.dosage ?? ""} - ⏰ ${medication.reminderTime}'),
+                        subtitle: Text(
+                            '${medication.dosage ?? ""} - ⏰ ${medication.reminderTime}'),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete, color: Colors.red),
                           onPressed: () => _showDeleteDialog(medication),
                         ),
-                      );
-                    },
-                  ),
-                ),
+                      ),
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 40),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.medication, size: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          Text(
+            'Henüz ilaç eklenmedi',
+            style: TextStyle(
+              fontSize: 18,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: _showAddDialog,
+            icon: const Icon(Icons.add),
+            label: const Text('İlk ilacını ekle'),
+          ),
+        ],
+      ),
     );
   }
 }

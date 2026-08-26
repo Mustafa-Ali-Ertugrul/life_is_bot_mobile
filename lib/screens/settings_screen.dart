@@ -3,8 +3,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
 import '../core/config.dart';
 import '../core/theme.dart';
-import '../models/habit.dart';
+import '../main.dart';
 import '../models/medication.dart';
+import '../models/habit.dart';
+import '../models/sport_plan.dart';
+import '../models/supplement_plan.dart';
 import '../services/notification_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -20,13 +23,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   bool _medicationReminders = true;
   bool _habitReminders = true;
+  bool _sportReminders = true;
+  bool _supplementReminders = true;
   bool _stepReminders = true;
   bool _backendConnected = false;
   bool _loading = true;
   String _gender = 'male'; // 'male' -> Turkuaz (teal), 'female' -> Yeşil (green)
+  String _themeMode = 'system';
 
   // Bot Modül Durumları
-  Map<String, bool> _botPreferences = {
+  final Map<String, bool> _botPreferences = {
     'medication_bot': true,
     'habit_bot': true,
     'sport_bot': true,
@@ -42,7 +48,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadSettings() async {
-    setState(() => _loading = true);
+    if (mounted) setState(() => _loading = true);
 
     final prefs = await SharedPreferences.getInstance();
     final goal = await _api.getStepGoal();
@@ -59,14 +65,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     }
 
+    if (mounted) {
+      setState(() {
+        _gender = prefs.getString('user_gender') ?? 'male';
+        _themeMode = prefs.getString('theme_mode') ?? 'system';
+        _stepGoalController.text = goal.toString();
+        _medicationReminders = prefs.getBool('medication_reminders') ?? true;
+        _habitReminders = prefs.getBool('habit_reminders') ?? true;
+        _sportReminders = prefs.getBool('sport_reminders') ?? true;
+        _supplementReminders = prefs.getBool('supplement_reminders') ?? true;
+        _stepReminders = prefs.getBool('step_reminders') ?? true;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _changeTheme(String? val) async {
+    if (val == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('theme_mode', val);
     setState(() {
-      _gender = prefs.getString('user_gender') ?? 'male';
-      _stepGoalController.text = goal.toString();
-      _medicationReminders = prefs.getBool('medication_reminders') ?? true;
-      _habitReminders = prefs.getBool('habit_reminders') ?? true;
-      _stepReminders = prefs.getBool('step_reminders') ?? true;
-      _loading = false;
+      _themeMode = val;
     });
+
+    ThemeMode mode = ThemeMode.system;
+    if (val == 'light') mode = ThemeMode.light;
+    if (val == 'dark') mode = ThemeMode.dark;
+
+    if (mounted) {
+      MyApp.setThemeMode(context, mode);
+    }
+  }
+
+  Future<void> _changeGender(String? val) async {
+    if (val == null || val == _gender) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_gender', val);
+    if (mounted) {
+      setState(() => _gender = val);
+    }
   }
 
   Future<void> _saveSettings() async {
@@ -75,6 +112,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     await prefs.setBool('medication_reminders', _medicationReminders);
     await prefs.setBool('habit_reminders', _habitReminders);
+    await prefs.setBool('sport_reminders', _sportReminders);
+    await prefs.setBool('supplement_reminders', _supplementReminders);
     await prefs.setBool('step_reminders', _stepReminders);
 
     if (_backendConnected) {
@@ -100,6 +139,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                _buildSectionTitle('🧑 Cinsiyet Seçimi (test)'),
+                Card(
+                  child: Column(
+                    children: [
+                      RadioListTile<String>(
+                        title: const Text('Erkek'),
+                        value: 'male',
+                        groupValue: _gender,
+                        onChanged: (val) => _changeGender(val),
+                      ),
+                      const Divider(height: 1),
+                      RadioListTile<String>(
+                        title: const Text('Kadın'),
+                        value: 'female',
+                        groupValue: _gender,
+                        onChanged: (val) => _changeGender(val),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                _buildSectionTitle('🎨 Tema Seçimi'),
+                Card(
+                  child: Column(
+                    children: [
+                      RadioListTile<String>(
+                        title: const Text('Sistem Teması (Otomatik)'),
+                        value: 'system',
+                        groupValue: _themeMode,
+                        onChanged: (val) => _changeTheme(val),
+                      ),
+                      const Divider(height: 1),
+                      RadioListTile<String>(
+                        title: const Text('Açık Tema (Light)'),
+                        value: 'light',
+                        groupValue: _themeMode,
+                        onChanged: (val) => _changeTheme(val),
+                      ),
+                      const Divider(height: 1),
+                      RadioListTile<String>(
+                        title: const Text('Koyu Tema (Dark)'),
+                        value: 'dark',
+                        groupValue: _themeMode,
+                        onChanged: (val) => _changeTheme(val),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
                 _buildSectionTitle('🚶 Adım Hedefi'),
                 Card(
                   child: Padding(
@@ -161,12 +249,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const Divider(height: 1),
                       SwitchListTile(
+                        title: const Text('Spor hatırlatmaları'),
+                        value: _sportReminders,
+                        onChanged: (value) async {
+                          setState(() => _sportReminders = value);
+                          await _saveSettings();
+                          await _syncSportReminders(value);
+                        },
+                      ),
+                      const Divider(height: 1),
+                      SwitchListTile(
+                        title: const Text('Supplement hatırlatmaları'),
+                        value: _supplementReminders,
+                        onChanged: (value) async {
+                          setState(() => _supplementReminders = value);
+                          await _saveSettings();
+                          await _syncSupplementReminders(value);
+                        },
+                      ),
+                      const Divider(height: 1),
+                      SwitchListTile(
                         title: const Text('Adım hatırlatmaları'),
                         value: _stepReminders,
                         onChanged: (value) async {
                           setState(() => _stepReminders = value);
                           await _saveSettings();
                           await NotificationService.setStepReminder(value);
+                        },
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.notifications_active, color: Colors.amber),
+                        title: const Text('Sistem Bildirim İzinlerini Aç'),
+                        subtitle: const Text('Xiaomi/MIUI kısıtlamalarını kaldırmak için tıklayın'),
+                        trailing: const Icon(Icons.open_in_new),
+                        onTap: () async {
+                          await NotificationService.openNotificationSettings();
                         },
                       ),
                     ],
@@ -237,6 +355,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final data = await _api.getHabits();
     final habits = data.map((json) => Habit.fromJson(json)).toList();
     await NotificationService.setHabitReminders(enabled, habits);
+  }
+
+  Future<void> _syncSportReminders(bool enabled) async {
+    final data = await _api.getSportPlans();
+    final plans = data.map((json) => SportPlan.fromJson(json)).toList();
+    await NotificationService.setSportReminders(enabled, plans);
+  }
+
+  Future<void> _syncSupplementReminders(bool enabled) async {
+    final data = await _api.getSupplementPlans();
+    final supps = data.map((json) => SupplementPlan.fromJson(json)).toList();
+    await NotificationService.setSupplementReminders(enabled, supps);
   }
 
   Widget _buildBotTile(String title, String botKey) {
