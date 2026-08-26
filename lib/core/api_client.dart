@@ -13,9 +13,21 @@ class ApiClient {
   factory ApiClient() => _instance;
   ApiClient._internal();
 
-  final http.Client _client = http.Client();
+  http.Client _client = http.Client();
   static const String _tokenKey = 'api_access_token';
   String? _accessToken;
+
+  @visibleForTesting
+  void setTestClient(http.Client client) => _client = client;
+
+  @visibleForTesting
+  void setTestToken(String token) => _accessToken = token;
+
+  @visibleForTesting
+  void resetForTest() {
+    _accessToken = null;
+    _client = http.Client();
+  }
 
   /// Önbellekteki token'ı yükle ve provisioning key ile taze JWT al
   Future<bool> init() async {
