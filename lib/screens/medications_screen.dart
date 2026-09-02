@@ -217,6 +217,37 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
 
   bool _isFocused(int id) => _focusVisible && widget.focusId == id;
 
+  String _getMedicationAsset() {
+    final completedCount = _completedDays.length;
+    if (completedCount >= 15 ||
+        (_completionRate != null && _completionRate! >= 75)) {
+      return 'assets/images/medication_phase_4.gif';
+    } else if (completedCount >= 10 ||
+        (_completionRate != null && _completionRate! >= 50)) {
+      return 'assets/images/medication_phase_3.gif';
+    } else if (completedCount >= 5 ||
+        (_completionRate != null && _completionRate! >= 25)) {
+      return 'assets/images/medication_phase_2.gif';
+    } else {
+      return 'assets/images/medication_phase_1.gif';
+    }
+  }
+
+  Widget _buildMedicationCharacterWidget() {
+    final asset = _getMedicationAsset();
+    return Image.asset(
+      asset,
+      fit: BoxFit.contain,
+      errorBuilder: (context, error, stackTrace) {
+        return Icon(
+          Icons.medication,
+          size: 64,
+          color: AppTheme.of(_gender),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -251,6 +282,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                     markedWeekdays: _markedWeekdays,
                     scheduledDays: _scheduledDays,
                     completedDays: _completedDays,
+                    rightChild: _buildMedicationCharacterWidget(),
                     headerTrailing: _completionRate != null
                         ? 'Bu ay %${_completionRate!.round()}'
                         : null,
