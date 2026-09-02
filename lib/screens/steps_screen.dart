@@ -1,6 +1,7 @@
 // lib/screens/steps_screen.dart
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../core/api_client.dart';
 import '../core/database.dart';
 import '../core/theme.dart';
 import '../services/google_fit_service.dart';
@@ -19,6 +20,7 @@ class _StepsScreenState extends State<StepsScreen> {
   final Map<DateTime, int> _weeklySteps = {};
   bool _loading = true;
   String _gender = 'male';
+  int _goal = 10000;
 
   final List<String> _dayNames = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 
@@ -34,10 +36,13 @@ class _StepsScreenState extends State<StepsScreen> {
   Future<void> _loadSteps() async {
     setState(() => _loading = true);
 
-    // Önce Google Fit'ten senkronize et
+    // Google Fit'ten haftalık backfill: açılmayan günler de DB'ye yazılır
     if (await _googleFit.isAvailable()) {
-      await _googleFit.syncSteps();
+      await _googleFit.syncWeeklySteps();
     }
+
+    // Adım hedefi backend'den (hardcoded 10000 yerine)
+    _goal = await ApiClient().getStepGoal();
 
     // Local DB'den haftalık verileri al
     final weekly = await _db.getWeeklySteps();
@@ -321,10 +326,10 @@ class _StepsScreenState extends State<StepsScreen> {
                       '$steps adım',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: steps >= 10000 ? Colors.green : Theme.of(context).colorScheme.onSurface,
+                        color: steps >= _goal ? Colors.green : Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
-                    if (steps >= 10000)
+                    if (steps >= _goal)
                       const Padding(
                         padding: EdgeInsets.only(left: 8),
                         child: Icon(Icons.check_circle, color: Colors.green, size: 20),

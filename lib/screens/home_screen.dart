@@ -7,6 +7,8 @@ import '../core/app_navigator.dart';
 import '../core/theme.dart';
 import '../models/habit.dart';
 import '../models/medication.dart';
+import '../models/sport_plan.dart';
+import '../models/supplement_plan.dart';
 import '../services/notification_service.dart';
 import 'habits_screen.dart';
 import 'medications_screen.dart';
@@ -34,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen>
   int _stepGoal = 10000;
   bool _loading = true;
   bool _googleFitAvailable = false;
+  bool _healthPermissionDenied = false;
   bool _backendConnected = false;
   int _currentStreak = 0;
   String _gender = 'male'; // 'male' -> Turkuaz, 'female' -> Yeşil
@@ -68,6 +71,9 @@ class _HomeScreenState extends State<HomeScreen>
     });
     await _initGoogleFit();
     await _loadBackendData();
+    // Backend durumu bilindikten sonra adımlar senkron edilir; aksi halde
+    // _backendConnected=false iken postSteps atlanır.
+    await _refreshSteps();
     setState(() => _loading = false);
   }
 
@@ -78,13 +84,23 @@ class _HomeScreenState extends State<HomeScreen>
           .timeout(const Duration(seconds: 3), onTimeout: () => false);
 
       if (_googleFitAvailable) {
-        await _googleFit
+        final granted = await _googleFit
             .requestPermission()
             .timeout(const Duration(seconds: 5), onTimeout: () => false);
-        try {
-          await _refreshSteps();
-        } catch (e) {
-          debugPrint('❌ Refresh steps error: $e');
+        if (mounted) {
+          setState(() => _healthPermissionDenied = !granted);
+        }
+        if (granted) {
+          try {
+            final steps = await _googleFit.getTodaySteps();
+            await _db.saveSteps(steps: steps, date: DateTime.now());
+            _todaySteps = steps;
+            if (mounted) setState(() {});
+          } catch (e) {
+            debugPrint('❌ Health read error: $e');
+            _todaySteps = await _db.getTodaySteps();
+          }
+        } else {
           _todaySteps = await _db.getTodaySteps();
         }
         return;
@@ -107,8 +123,24 @@ class _HomeScreenState extends State<HomeScreen>
     _backendConnected = await _api.checkHealth();
 
     if (_backendConnected) {
-      // Modül tercihlerini çek
-      final preferences = await _api.getPreferences();
+      // Paralel fetch: 8 ardışık round trip yerine tek dalga.
+      final results = await Future.wait([
+        _api.getPreferences(),
+        _api.getMedications(),
+        _api.getHabits(),
+        _api.getSportPlans(),
+        _api.getSupplementPlans(),
+        _api.getStreak(),
+        _api.getStepGoal(),
+      ]);
+      final preferences = results[0] as List<Map<String, dynamic>>;
+      final meds = results[1] as List<Map<String, dynamic>>;
+      final habits = results[2] as List<Map<String, dynamic>>;
+      final sportData = results[3] as List<Map<String, dynamic>>;
+      final suppData = results[4] as List<Map<String, dynamic>>;
+      final streak = results[5] as Map<String, dynamic>?;
+      final goal = results[6] as int;
+
       final Map<String, bool> newPrefs = Map.from(_botPreferences);
       for (var pref in preferences) {
         final key = pref['bot_key'] as String?;
@@ -117,10 +149,6 @@ class _HomeScreenState extends State<HomeScreen>
           newPrefs[key] = enabled;
         }
       }
-
-      // İlaç ve rutin sayılarını al
-      final meds = await _api.getMedications();
-      final habits = await _api.getHabits();
 
       // Yerel bildirim zamanlamalarını güncel saat dilimiyle senkronla
       if (prefs.getBool('medication_reminders') ?? true) {
@@ -135,15 +163,21 @@ class _HomeScreenState extends State<HomeScreen>
           habits.map((h) => Habit.fromJson(h)).toList(),
         );
       }
+      if (prefs.getBool('sport_reminders') ?? true) {
+        await NotificationService.setSportReminders(
+          true,
+          sportData.map((j) => SportPlan.fromJson(j)).toList(),
+        );
+      }
+      if (prefs.getBool('supplement_reminders') ?? true) {
+        await NotificationService.setSupplementReminders(
+          true,
+          suppData.map((j) => SupplementPlan.fromJson(j)).toList(),
+        );
+      }
       if (prefs.getBool('step_reminders') ?? true) {
         await NotificationService.setStepReminder(true);
       }
-
-      // Streak bilgisini al
-      final streak = await _api.getStreak();
-
-      // Adım hedefini al
-      final goal = await _api.getStepGoal();
 
       if (mounted) {
         setState(() {
@@ -156,7 +190,11 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _refreshSteps() async {
-    if (!_googleFitAvailable) return;
+    if (!_googleFitAvailable || _healthPermissionDenied) {
+      _todaySteps = await _db.getTodaySteps();
+      if (mounted) setState(() {});
+      return;
+    }
 
     final steps = await _googleFit.getTodaySteps();
     await _db.saveSteps(steps: steps, date: DateTime.now());
@@ -458,6 +496,29 @@ class _HomeScreenState extends State<HomeScreen>
                       Expanded(
                         child: Text(
                           "Google Fit / Health Connect bu cihazda yok. Adımlar manuel kayıtlardan okunur.",
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (_googleFitAvailable && _healthPermissionDenied)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.lock_outline, color: Colors.orange, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          "Sağlık/adım izni verilmedi. Ayarlar > İzinler'den izin verin.",
                           style: TextStyle(
                             fontSize: 12,
                             color: Theme.of(context).colorScheme.onSurface,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
@@ -30,6 +32,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _loading = true;
   String _gender = 'male'; // 'male' -> Turkuaz (teal), 'female' -> Yeşil (green)
   String _themeMode = 'system';
+  Timer? _saveDebounce;
+  TimeOfDay _stepReminderTime = const TimeOfDay(hour: 21, minute: 0);
 
   // Bot Modül Durumları
   final Map<String, bool> _botPreferences = {
@@ -45,6 +49,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadSettings();
+  }
+
+  @override
+  void dispose() {
+    _saveDebounce?.cancel();
+    _stepGoalController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSettings() async {
@@ -75,6 +86,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _sportReminders = prefs.getBool('sport_reminders') ?? true;
         _supplementReminders = prefs.getBool('supplement_reminders') ?? true;
         _stepReminders = prefs.getBool('step_reminders') ?? true;
+        _stepReminderTime = TimeOfDay(
+          hour: prefs.getInt('step_reminder_hour') ?? 21,
+          minute: prefs.getInt('step_reminder_minute') ?? 0,
+        );
         _loading = false;
       });
     }
@@ -106,9 +121,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _saveSettings() async {
+  Future<void> _saveSettings({bool showFeedback = false}) async {
     final prefs = await SharedPreferences.getInstance();
-    final newGoal = int.tryParse(_stepGoalController.text) ?? 10000;
 
     await prefs.setBool('medication_reminders', _medicationReminders);
     await prefs.setBool('habit_reminders', _habitReminders);
@@ -116,15 +130,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setBool('supplement_reminders', _supplementReminders);
     await prefs.setBool('step_reminders', _stepReminders);
 
-    if (_backendConnected) {
-      await _api.updateStepGoal(newGoal);
-    }
-
-    if (mounted) {
+    if (mounted && showFeedback) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ayarlar kaydedildi')),
       );
     }
+  }
+
+  Future<void> _saveStepGoal() async {
+    if (!_backendConnected) return;
+    final newGoal = int.tryParse(_stepGoalController.text) ?? 10000;
+    await _api.updateStepGoal(newGoal);
+  }
+
+  void _onStepGoalChanged() {
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(const Duration(milliseconds: 600), () {
+      _saveStepGoal();
+    });
   }
 
   @override
@@ -200,7 +223,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         suffixText: 'adım/gün',
                         border: InputBorder.none,
                       ),
-                      onChanged: (value) => _saveSettings(),
+                      onChanged: (value) => _onStepGoalChanged(),
                     ),
                   ),
                 ),
@@ -233,7 +256,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         value: _medicationReminders,
                         onChanged: (value) async {
                           setState(() => _medicationReminders = value);
-                          await _saveSettings();
+                          await _saveSettings(showFeedback: true);
                           await _syncMedicationReminders(value);
                         },
                       ),
@@ -243,7 +266,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         value: _habitReminders,
                         onChanged: (value) async {
                           setState(() => _habitReminders = value);
-                          await _saveSettings();
+                          await _saveSettings(showFeedback: true);
                           await _syncHabitReminders(value);
                         },
                       ),
@@ -253,7 +276,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         value: _sportReminders,
                         onChanged: (value) async {
                           setState(() => _sportReminders = value);
-                          await _saveSettings();
+                          await _saveSettings(showFeedback: true);
                           await _syncSportReminders(value);
                         },
                       ),
@@ -263,7 +286,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         value: _supplementReminders,
                         onChanged: (value) async {
                           setState(() => _supplementReminders = value);
-                          await _saveSettings();
+                          await _saveSettings(showFeedback: true);
                           await _syncSupplementReminders(value);
                         },
                       ),
@@ -273,9 +296,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         value: _stepReminders,
                         onChanged: (value) async {
                           setState(() => _stepReminders = value);
-                          await _saveSettings();
+                          await _saveSettings(showFeedback: true);
                           await NotificationService.setStepReminder(value);
                         },
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        enabled: _stepReminders,
+                        leading: const Icon(Icons.schedule),
+                        title: const Text('Adım hatırlatma saati'),
+                        subtitle: Text(_stepReminderTime.format(context)),
+                        trailing: const Icon(Icons.edit),
+                        onTap: _stepReminders ? _pickStepReminderTime : null,
                       ),
                       const Divider(height: 1),
                       ListTile(
@@ -328,20 +360,70 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       const ListTile(
                         title: Text('Versiyon'),
-                        trailing: Text('1.0.0'),
+                        trailing: Text('1.1.0'),
                       ),
                       const Divider(height: 1),
                       ListTile(
                         title: const Text('Verileri sıfırla', style: TextStyle(color: Colors.red)),
-                        onTap: () {
-                          // TODO: Implement data reset
-                        },
+                        onTap: _resetData,
                       ),
                     ],
                   ),
                 ),
               ],
             ),
+    );
+  }
+
+  Future<void> _pickStepReminderTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _stepReminderTime,
+    );
+    if (picked == null || !mounted) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('step_reminder_hour', picked.hour);
+    await prefs.setInt('step_reminder_minute', picked.minute);
+    setState(() => _stepReminderTime = picked);
+    if (_stepReminders) {
+      await NotificationService.setStepReminder(true);
+    }
+  }
+
+  Future<void> _resetData() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Verileri Sıfırla'),
+        content: const Text(
+          'Yerel ayarlar ve zamanlanmış bildirimler silinecek. '
+          'Backend verileri etkilenmez. Devam edilsin mi?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('İptal'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Sıfırla'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    await NotificationService.cancelAll();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+            'Yerel veriler sıfırlandı. Değişikliklerin uygulanması için uygulamayı yeniden başlatın.'),
+      ),
     );
   }
 

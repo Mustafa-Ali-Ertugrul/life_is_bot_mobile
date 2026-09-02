@@ -173,6 +173,7 @@ void main() {
     test('init fetches token via provisioning key and stores', () async {
       SharedPreferences.setMockInitialValues({});
       api.resetForTest();
+      api.setTestProvisioningKey('test-provisioning-key');
       final mock = MockClient((request) async {
         expect(request.url.path, endsWith('/auth/token'));
         expect(request.headers['X-Provisioning-Key'], isNotEmpty);

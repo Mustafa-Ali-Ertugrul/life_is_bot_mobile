@@ -47,7 +47,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _loadStatus() async {
     final status = await _api.getOnboardingStatus();
     if (status == null) {
-      await _enterApp();
+      // Backend erişilemez: app'e gir ama lokal 'tamamlandı' yazma —
+      // aksi halde offline ilk açılış testi kalıcı kaçırır.
+      await _enterApp(markDone: false);
       return;
     }
     if (status['completed'] == true ||
@@ -61,9 +63,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     });
   }
 
-  Future<void> _enterApp() async {
+  Future<void> _enterApp({bool markDone = true}) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('onboarding_done', true);
+    if (markDone) {
+      await prefs.setBool('onboarding_done', true);
+    }
     if (!mounted) return;
     Navigator.pushReplacement(
       context,
@@ -129,8 +133,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Future<void> _skip() async {
     setState(() => _busy = true);
-    await _api.skipOnboarding();
-    await _enterApp();
+    final skipped = await _api.skipOnboarding();
+    // Backend skip başarısızsa 'onboarding_done' yazılmaz; sonraki açılışta
+    // test tekrar sorulur.
+    await _enterApp(markDone: skipped);
   }
 
   @override

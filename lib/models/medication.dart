@@ -1,5 +1,9 @@
 // lib/models/medication.dart
 class Medication {
+  /// İlaç hatırlatmaları her gün tekrar eder (bildirim DateTimeComponents.time
+  /// ile günlük planlanır); backend bu yüzden tüm günleri bekler.
+  static const String everyDayDaysOfWeek = '1,2,3,4,5,6,7';
+
   final int id;
   final String name;
   final String? dosage;
@@ -38,7 +42,7 @@ class Medication {
       'dose': dosage,
       'target_hour': hour,
       'target_minute': minute,
-      'days_of_week': '1,2,3,4,5,6,7',
+      'days_of_week': everyDayDaysOfWeek,
     };
   }
 }

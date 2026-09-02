@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/api_client.dart';
@@ -11,16 +13,46 @@ import 'services/foreground_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Bildirim servisini başlat
+  // Bildirim servisini başlat (yerel işlemler; timezone + kanallar, hızlı)
   await NotificationService.init();
 
-  // Foreground service — MIUI'da alarm teslimatı için process canlı tutulur
-  await ForegroundService.init();
+  final prefs = await SharedPreferences.getInstance();
 
-  // Bildirim izni iste
+  // Tema: onboarding'de seçilen cinsiyete göre (varsayılan erkek)
+  final female = (prefs.getString('user_gender') ?? 'male') == 'female';
+  final themeModeStr = prefs.getString('theme_mode') ?? 'system';
+  ThemeMode themeMode = ThemeMode.system;
+  if (themeModeStr == 'light') themeMode = ThemeMode.light;
+  if (themeModeStr == 'dark') themeMode = ThemeMode.dark;
+
+  // UI ilk frame'de gösterilir; ağa/izne bağlı işler arka planda yapılır.
+  // Aksi halde backend yavaşsa en kötü ~20 sn beyaz ekran olurdu.
+  Widget home = const HomeScreen();
+  final api = ApiClient();
+  if (!(prefs.getBool('onboarding_done') ?? false)) {
+    // Yalnızca ilk açılışta backend kontrol edilir (≤10 sn);
+    // sonraki açılışlar ağ beklemeden UI gösterir.
+    await api.init();
+    if (await api.checkHealth()) {
+      home = const OnboardingScreen();
+    }
+  } else {
+    // Token yoksa _AuthRetryClient ilk 401'de kendisi çeker.
+    unawaited(api.init());
+  }
+
+  runApp(MyApp(home: home, female: female, initialThemeMode: themeMode));
+
+  // Arka plan başlatma — MIUI'da alarm teslimatı için process canlı tutulur
+  unawaited(ForegroundService.init());
+  unawaited(_postLaunchInit());
+}
+
+Future<void> _postLaunchInit() async {
+  // Bildirim izni iste (idempotent: verilmişse diyalog açmaz)
   await NotificationService.requestPermission();
 
-  // Adım hatırlatmasını zamanla (tercihe bağlı)
+  // Adım hatırlatmasını zamanla (tercihe bağlı, kullanıcı saati)
   final prefs = await SharedPreferences.getInstance();
   if (prefs.getBool('step_reminders') ?? true) {
     await NotificationService.scheduleStepReminder();
@@ -31,26 +63,6 @@ void main() async {
   if (testBots) {
     await NotificationService.showTestBotNotifications();
   }
-
-  // İlk açılışta 20 soruluk değerlendirme testi
-  final api = ApiClient();
-  await api.init();
-
-  Widget home = const HomeScreen();
-  if (!(prefs.getBool('onboarding_done') ?? false)) {
-    if (await api.checkHealth()) {
-      home = const OnboardingScreen();
-    }
-  }
-
-  // Tema: onboarding'de seçilen cinsiyete göre (varsayılan erkek)
-  final female = (prefs.getString('user_gender') ?? 'male') == 'female';
-  final themeModeStr = prefs.getString('theme_mode') ?? 'system';
-  ThemeMode themeMode = ThemeMode.system;
-  if (themeModeStr == 'light') themeMode = ThemeMode.light;
-  if (themeModeStr == 'dark') themeMode = ThemeMode.dark;
-
-  runApp(MyApp(home: home, female: female, initialThemeMode: themeMode));
 }
 
 class MyApp extends StatefulWidget {

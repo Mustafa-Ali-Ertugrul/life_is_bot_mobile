@@ -13,12 +13,36 @@ class ApiClient {
   factory ApiClient() => _instance;
   ApiClient._internal();
 
-  http.Client _client = http.Client();
+  late http.Client _client = _AuthRetryClient(
+    http.Client(),
+    onAuthRetry: _authRetry,
+  );
   static const String _tokenKey = 'api_access_token';
   String? _accessToken;
 
+  /// Testlerde provisioning key'i ezmemize yarar (dart-define CI'da yoksa).
+  String? _testProvisioningKey;
+
+  /// Son liste çağrılarının grup bazlı hata durumu. Ekranlar "boş liste" ile
+  /// "bağlantı hatası"nı ayırt etmek için kullanır. Grup bazlıdır: paralel
+  /// çağrılar (çok sekmeli HomeScreen) birbirinin sonucunu ezemez.
+  final Map<String, bool> _groupFailed = {};
+
+  bool groupFailed(String group) => _groupFailed[group] ?? false;
+
   @visibleForTesting
-  void setTestClient(http.Client client) => _client = client;
+  void setTestClient(http.Client client) {
+    // Mock, sarmalayıcının İÇİNE konur: 401 retry yolu test edilebilir.
+    // Sarmalayıcı 401 dışında şeffaftır; mevcut testler etkilenmez.
+    _client = _AuthRetryClient(client, onAuthRetry: _authRetry);
+    // Token istekleri ayrı ham istemciden akıtılır; mock ikisine de bağlanır
+    // ki testler auth/token çağrılarını da yakalayabilsin.
+    _rawClient = client;
+  }
+
+  /// Testlerde provisioning key ezmesi (dart-define ile CI'a key gömmeden).
+  @visibleForTesting
+  void setTestProvisioningKey(String key) => _testProvisioningKey = key;
 
   @visibleForTesting
   void setTestToken(String token) => _accessToken = token;
@@ -26,7 +50,24 @@ class ApiClient {
   @visibleForTesting
   void resetForTest() {
     _accessToken = null;
-    _client = http.Client();
+    _testProvisioningKey = null;
+    _groupFailed.clear();
+    _client = _AuthRetryClient(
+      http.Client(),
+      onAuthRetry: _authRetry,
+    );
+    _rawClient = http.Client();
+  }
+
+  /// Token istekleri (auth/token) retry sarmalayıcısından geçmez; aksi halde
+  /// 401 → refresh → 401 sonsuz döngüsü oluşur.
+  late http.Client _rawClient = http.Client();
+
+  /// 401 alınca provisioning key ile yeni JWT alır (retry header'ı için).
+  Future<String?> _authRetry() async {
+    final prefs = await SharedPreferences.getInstance();
+    final ok = await _fetchToken(prefs);
+    return ok ? _accessToken : null;
   }
 
   /// Önbellekteki token'ı yükle ve provisioning key ile taze JWT al
@@ -41,12 +82,17 @@ class ApiClient {
   }
 
   Future<bool> _fetchToken(SharedPreferences prefs) async {
-    if (AppConfig.provisioningKey.isEmpty) return false;
+    final provisioningKey = AppConfig.provisioningKey.isNotEmpty
+        ? AppConfig.provisioningKey
+        : (_testProvisioningKey ?? '');
+    if (provisioningKey.isEmpty) return false;
     try {
-      final response = await _client
+      // Raw client: retry sarmalayıcısı 401'de yeniden token isteyip
+      // döngüye girmesin diye token istekleri doğrudan akıtılır.
+      final response = await _rawClient
           .post(
             Uri.parse('${AppConfig.baseUrl}/auth/token'),
-            headers: {'X-Provisioning-Key': AppConfig.provisioningKey},
+            headers: {'X-Provisioning-Key': provisioningKey},
           )
           .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
       if (response.statusCode != 200) {
@@ -90,7 +136,7 @@ class ApiClient {
             }),
           )
           .timeout(const Duration(seconds: AppConfig.timeoutSeconds));
-      return res.statusCode == 201;
+      return res.statusCode == 200 || res.statusCode == 201;
     } catch (e) {
       debugPrint('❌ submitResponse error: $e');
       return false;
@@ -115,6 +161,7 @@ class ApiClient {
 
   /// İlaç listesi
   Future<List<Map<String, dynamic>>> getMedications() async {
+    _groupFailed['medications'] = false;
     try {
       final response = await _client
           .get(
@@ -132,9 +179,11 @@ class ApiClient {
         return List<Map<String, dynamic>>.from(data);
       }
       debugPrint('⚠️ Medications API error: ${response.statusCode}');
+      _groupFailed['medications'] = true;
       return [];
     } catch (e) {
       debugPrint('❌ Error fetching medications: $e');
+      _groupFailed['medications'] = true;
       return [];
     }
   }
@@ -179,6 +228,7 @@ class ApiClient {
 
   /// Rutin listesi
   Future<List<Map<String, dynamic>>> getHabits() async {
+    _groupFailed['habits'] = false;
     try {
       final response = await _client
           .get(
@@ -195,9 +245,11 @@ class ApiClient {
         return List<Map<String, dynamic>>.from(data);
       }
       debugPrint('⚠️ Habits API error: ${response.statusCode}');
+      _groupFailed['habits'] = true;
       return [];
     } catch (e) {
       debugPrint('❌ Error fetching habits: $e');
+      _groupFailed['habits'] = true;
       return [];
     }
   }
@@ -263,6 +315,7 @@ class ApiClient {
 
   /// Spor planı listesi
   Future<List<Map<String, dynamic>>> getSportPlans() async {
+    _groupFailed['sport'] = false;
     try {
       final response = await _client
           .get(
@@ -280,9 +333,11 @@ class ApiClient {
         return List<Map<String, dynamic>>.from(data);
       }
       debugPrint('⚠️ Sport API error: ${response.statusCode}');
+      _groupFailed['sport'] = true;
       return [];
     } catch (e) {
       debugPrint('❌ Error fetching sport plans: $e');
+      _groupFailed['sport'] = true;
       return [];
     }
   }
@@ -327,6 +382,7 @@ class ApiClient {
 
   /// Supplement (takviye) listesi
   Future<List<Map<String, dynamic>>> getSupplementPlans() async {
+    _groupFailed['supplement'] = false;
     try {
       final response = await _client
           .get(
@@ -342,9 +398,11 @@ class ApiClient {
         }
         return List<Map<String, dynamic>>.from(data);
       }
+      _groupFailed['supplement'] = true;
       return [];
     } catch (e) {
       debugPrint('❌ Error fetching supplement plans: $e');
+      _groupFailed['supplement'] = true;
       return [];
     }
   }
@@ -659,4 +717,39 @@ class ApiClient {
       return false;
     }
   }
+}
+
+/// 401 alınca token'ı yenileyip isteği bir kez tekrarlayan HTTP sarmalayıcı.
+/// Retry isteği klonun YENİ token'ı taşır; aksi halde retry da 401 dönerdi.
+class _AuthRetryClient extends http.BaseClient {
+  _AuthRetryClient(this._inner, {required this.onAuthRetry});
+
+  final http.Client _inner;
+  final Future<String?> Function() onAuthRetry;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final backup = _cloneForRetry(request);
+    var response = await _inner.send(request);
+    if (response.statusCode == 401 && backup != null) {
+      final newToken = await onAuthRetry();
+      if (newToken != null) {
+        backup.headers['Authorization'] = 'Bearer $newToken';
+        response = await _inner.send(backup);
+      }
+    }
+    return response;
+  }
+
+  http.BaseRequest? _cloneForRetry(http.BaseRequest request) {
+    if (request is http.Request) {
+      return http.Request(request.method, request.url)
+        ..headers.addAll(request.headers)
+        ..bodyBytes = request.bodyBytes;
+    }
+    return null;
+  }
+
+  @override
+  void close() => _inner.close();
 }

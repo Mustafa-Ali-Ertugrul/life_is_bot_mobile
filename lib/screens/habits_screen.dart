@@ -1,4 +1,6 @@
 // lib/screens/habits_screen.dart
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
@@ -8,9 +10,12 @@ import '../services/notification_service.dart';
 import '../widgets/monthly_calendar_card.dart';
 
 class HabitsScreen extends StatefulWidget {
-  const HabitsScreen({super.key, this.embedded = false});
+  const HabitsScreen({super.key, this.embedded = false, this.focusId});
 
   final bool embedded;
+
+  /// Bildirim payload'ından gelen odaklanılacak öğe id'si
+  final int? focusId;
 
   @override
   State<HabitsScreen> createState() => _HabitsScreenState();
@@ -24,6 +29,8 @@ class _HabitsScreenState extends State<HabitsScreen> {
   double? _completionRate;
   Set<int> _scheduledDays = {};
   Set<int> _completedDays = {};
+  bool _focusVisible = true;
+  Timer? _focusTimer;
 
   @override
   void initState() {
@@ -34,6 +41,17 @@ class _HabitsScreenState extends State<HabitsScreen> {
     AppTheme.loadGender().then((g) {
       if (mounted) setState(() => _gender = g);
     });
+    if (widget.focusId != null) {
+      _focusTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _focusVisible = false);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadMonthDays() async {
@@ -84,6 +102,8 @@ class _HabitsScreenState extends State<HabitsScreen> {
     }
     return days;
   }
+
+  bool _isFocused(int id) => _focusVisible && widget.focusId == id;
 
   Future<void> _loadHabits() async {
     setState(() => _loading = true);
@@ -313,10 +333,15 @@ class _HabitsScreenState extends State<HabitsScreen> {
                   ),
                   const SizedBox(height: 16),
                   if (_habits.isEmpty)
-                    _buildEmptyState()
+                    _api.groupFailed('habits')
+                        ? _buildConnectionError()
+                        : _buildEmptyState()
                   else
                     for (final habit in _habits)
                       Card(
+                        color: _isFocused(habit.id)
+                            ? AppTheme.of(_gender).withValues(alpha: 0.15)
+                            : null,
                         margin: const EdgeInsets.only(bottom: 8),
                         child: ListTile(
                           leading: const Icon(
@@ -346,6 +371,37 @@ class _HabitsScreenState extends State<HabitsScreen> {
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _buildConnectionError() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 40),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.cloud_off, size: 64, color: Colors.orange),
+          const SizedBox(height: 16),
+          const Text(
+            'Sunucuya bağlanılamadı',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Liste yüklenemedi. Bağlantını kontrol edip yeniden dene.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: _loadHabits,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Yeniden Dene'),
+          ),
+        ],
+      ),
     );
   }
 

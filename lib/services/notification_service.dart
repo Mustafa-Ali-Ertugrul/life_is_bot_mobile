@@ -5,8 +5,11 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../core/api_client.dart';
 import '../core/app_navigator.dart';
+import '../core/notification_ids.dart';
 import '../models/medication.dart';
 import '../models/habit.dart';
 import '../models/sport_plan.dart';
@@ -26,6 +29,9 @@ class NotificationService {
       _notifications;
 
   static bool _initialized = false;
+
+  // Bildirim ID'leri tek doğruluk kaynağından gelir: NotificationIds.
+  // Formüller bu dosyada KOPYALANMAZ — schedule/cancel hep orayı çağırır.
 
   /// Bildirim servisini başlat
   static Future<void> init() async {
@@ -50,7 +56,18 @@ class NotificationService {
     );
 
     await _createNotificationChannels();
+    await _purgeLegacyNotificationIds();
     _initialized = true;
+  }
+
+  /// ID şeması güncellendiğinde (v2→v3: med artık 1M bandında, step 500M'de)
+  /// eski şemayla zamanlanmış bildirimleri tek seferlik temizler. Yoksa eski
+  /// ID'ler yetim kalır ve iptal edilemezler.
+  static Future<void> _purgeLegacyNotificationIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('notif_id_scheme_v3') ?? false) return;
+    await _notifications.cancelAll();
+    await prefs.setBool('notif_id_scheme_v3', true);
   }
 
   /// Aksiyon butonu / bildirim tıklamasını işler
@@ -88,13 +105,16 @@ class NotificationService {
 
     if (relatedId == null || responseType == null || relatedType == null) return;
 
+    // Aksiyon butonları cancelNotification: true ile bildirimi zaten kapatır;
+    // burada tekrar cancel gerekmez. Başarısız kayıt log ile görünür olsun.
     final ok = await ApiClient().submitResponse(
       relatedType: relatedType,
       relatedId: relatedId,
       response: responseType,
     );
-    if (ok && allowNavigation && response.id != null) {
-      await _notifications.cancel(response.id!);
+    if (!ok) {
+      debugPrint(
+          '⚠️ Bildirim aksiyonu kaydedilemedi: $relatedType#$relatedId → $responseType');
     }
   }
 
@@ -183,8 +203,11 @@ class NotificationService {
   }
 
   /// İzin iste (Android 13+ bildirim & exact alarm izinleri)
+  /// Idempotent: izin zaten verilmişse hiçbir sistem diyaloğu açmaz.
   static Future<bool> requestPermission() async {
-    await Permission.notification.request();
+    final status = await Permission.notification.status;
+    if (status.isGranted) return true;
+
     final androidImpl = _notifications
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
@@ -229,7 +252,7 @@ class NotificationService {
     final nextTime = _nextInstanceOfTime(hour, minute);
 
     await _notifications.zonedSchedule(
-      1000 + medication.id,
+      NotificationIds.medication(medication.id),
       '💊 İlaç Hatırlatması',
       '${medication.name} alma zamanı geldi!',
       nextTime,
@@ -276,7 +299,7 @@ class NotificationService {
     for (final day in habit.days) {
       final nextTime = _nextInstanceOfDay(day, hour, minute);
       await _notifications.zonedSchedule(
-        20000 + habit.id * 10 + day,
+        NotificationIds.habit(habit.id, day),
         '✅ Rutin Hatırlatması',
         '${habit.name} zamanı geldi!',
         nextTime,
@@ -326,7 +349,7 @@ class NotificationService {
     for (final day in days) {
       final nextTime = _nextInstanceOfDay(day, plan.targetHour, plan.targetMinute);
       await _notifications.zonedSchedule(
-        30000 + plan.id * 10 + day,
+        NotificationIds.sport(plan.id, day),
         '🏋️ Spor Hatırlatması',
         '${plan.sportType} antrenmanı zamanı geldi!',
         nextTime,
@@ -376,7 +399,7 @@ class NotificationService {
     for (final day in days) {
       final nextTime = _nextInstanceOfDay(day, supp.targetHour, supp.targetMinute);
       await _notifications.zonedSchedule(
-        40000 + supp.id * 10 + day,
+        NotificationIds.supplement(supp.id, day),
         '🧪 Supplement Hatırlatması',
         '${supp.name} ${supp.dose != null ? "(${supp.dose})" : ""} alma zamanı!',
         nextTime,
@@ -413,13 +436,16 @@ class NotificationService {
     }
   }
 
-  /// Adım hatırlatması (her gün 21:00)
+  /// Adım hatırlatması (kullanıcının seçtiği saat; varsayılan 21:00)
   static Future<void> scheduleStepReminder() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hour = prefs.getInt('step_reminder_hour') ?? 21;
+    final minute = prefs.getInt('step_reminder_minute') ?? 0;
     await _notifications.zonedSchedule(
-      9999,
+      NotificationIds.step,
       '🚶 Adım Hatırlatması',
       'Bugünkü adım hedefine ulaştın mı?',
-      _nextInstanceOfTime(21, 0),
+      _nextInstanceOfTime(hour, minute),
       NotificationDetails(
         android: AndroidNotificationDetails(
           'steps_v4',
@@ -440,7 +466,7 @@ class NotificationService {
     );
   }
 
-  /// Test: her bot için anında bildirim göster (debug amaçlı)
+  /// Test: ilaç botu için anında bildirim gösterir (debug amaçlı).
   static Future<void> showTestBotNotifications() async {
     await _notifications.show(
       7101,
@@ -465,13 +491,13 @@ class NotificationService {
 
   /// İlaç bildirimini iptal et
   static Future<void> cancelMedicationReminder(int medicationId) async {
-    await _notifications.cancel(1000 + medicationId);
+    await _notifications.cancel(NotificationIds.medication(medicationId));
   }
 
   /// Rutin bildirimlerini iptal et
   static Future<void> cancelHabitReminders(int habitId, List<int> days) async {
     for (final day in days) {
-      await _notifications.cancel(20000 + habitId * 10 + day);
+      await _notifications.cancel(NotificationIds.habit(habitId, day));
     }
   }
 
@@ -483,7 +509,7 @@ class NotificationService {
         .whereType<int>()
         .toList();
     for (final day in days) {
-      await _notifications.cancel(30000 + planId * 10 + day);
+      await _notifications.cancel(NotificationIds.sport(planId, day));
     }
   }
 
@@ -495,7 +521,7 @@ class NotificationService {
         .whereType<int>()
         .toList();
     for (final day in days) {
-      await _notifications.cancel(40000 + suppId * 10 + day);
+      await _notifications.cancel(NotificationIds.supplement(suppId, day));
     }
   }
 
@@ -557,7 +583,7 @@ class NotificationService {
     if (enabled) {
       await scheduleStepReminder();
     } else {
-      await _notifications.cancel(9999);
+      await _notifications.cancel(NotificationIds.step);
     }
   }
 

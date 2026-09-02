@@ -1,4 +1,6 @@
 // lib/screens/sport_screen.dart
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
@@ -9,9 +11,12 @@ import '../services/notification_service.dart';
 import '../widgets/monthly_calendar_card.dart';
 
 class SportScreen extends StatefulWidget {
-  const SportScreen({super.key, this.embedded = false});
+  const SportScreen({super.key, this.embedded = false, this.focusId});
 
   final bool embedded;
+
+  /// Bildirim payload'ından gelen odaklanılacak öğe id'si
+  final int? focusId;
 
   @override
   State<SportScreen> createState() => _SportScreenState();
@@ -26,6 +31,8 @@ class _SportScreenState extends State<SportScreen> {
   double? _completionRate;
   Set<int> _scheduledDays = {};
   Set<int> _completedDays = {};
+  bool _focusVisible = true;
+  Timer? _focusTimer;
 
   @override
   void initState() {
@@ -34,7 +41,20 @@ class _SportScreenState extends State<SportScreen> {
     AppTheme.loadGender().then((g) {
       if (mounted) setState(() => _gender = g);
     });
+    if (widget.focusId != null) {
+      _focusTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _focusVisible = false);
+      });
+    }
   }
+
+  @override
+  void dispose() {
+    _focusTimer?.cancel();
+    super.dispose();
+  }
+
+  bool _isFocused(int id) => _focusVisible && widget.focusId == id;
 
   Future<void> _loadAllData() async {
     setState(() => _loading = true);
@@ -345,6 +365,26 @@ class _SportScreenState extends State<SportScreen> {
     );
   }
 
+  Widget _buildConnectionError() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Row(
+        children: [
+          const Icon(Icons.cloud_off, color: Colors.orange),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Sunucuya bağlanılamadı. Yeniden denemek için sayfayı aşağı çek.',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDayChip(
     int day,
     String label,
@@ -535,7 +575,9 @@ class _SportScreenState extends State<SportScreen> {
                   ),
                   const SizedBox(height: 8),
                   if (_plans.isEmpty)
-                    const Padding(
+                    _api.groupFailed('sport')
+                        ? _buildConnectionError()
+                        : const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8),
                       child: Text(
                         'Henüz spor planı eklenmedi',
@@ -545,6 +587,9 @@ class _SportScreenState extends State<SportScreen> {
                   else
                     for (final plan in _plans)
                       Card(
+                        color: _isFocused(plan.id)
+                            ? AppTheme.of(_gender).withValues(alpha: 0.15)
+                            : null,
                         margin: const EdgeInsets.only(bottom: 8),
                         child: ListTile(
                           leading: const Icon(
@@ -592,7 +637,9 @@ class _SportScreenState extends State<SportScreen> {
                   ),
                   const SizedBox(height: 8),
                   if (_supplements.isEmpty)
-                    const Padding(
+                    _api.groupFailed('supplement')
+                        ? _buildConnectionError()
+                        : const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8),
                       child: Text(
                         'Henüz takviye eklenmedi',
@@ -602,6 +649,9 @@ class _SportScreenState extends State<SportScreen> {
                   else
                     for (final supp in _supplements)
                       Card(
+                        color: _isFocused(supp.id)
+                            ? AppTheme.of(_gender).withValues(alpha: 0.15)
+                            : null,
                         margin: const EdgeInsets.only(bottom: 8),
                         child: ListTile(
                           leading: const Icon(

@@ -79,18 +79,19 @@ class GoogleFitService {
     return stepsMap;
   }
 
-  /// Adımları sync et
-  Future<void> syncSteps() async {
-    final steps = await getTodaySteps();
-    final today = DateTime.now();
-
+  /// Adımları sync et: bugün + geçmiş 6 günü Fit'ten DB'ye backfill eder.
+  /// Uygulama açılmayan günler haftalık grafikte 0 görünmesin diye
+  /// tüm haftanın verisi DB'ye yazılır.
+  Future<void> syncWeeklySteps() async {
+    final weekly = await getWeeklySteps();
     final db = DatabaseService();
-    await db.saveSteps(
-      steps: steps,
-      date: today,
-      source: 'google_fit',
-    );
-
-    debugPrint('Synced $steps steps for ${today.toString().split(' ')[0]}');
+    for (final entry in weekly.entries) {
+      await db.saveSteps(
+        steps: entry.value,
+        date: entry.key,
+        source: 'google_fit',
+      );
+    }
+    debugPrint('Synced ${weekly.length} days of steps from Google Fit');
   }
 }

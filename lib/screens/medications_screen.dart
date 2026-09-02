@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
@@ -7,9 +9,12 @@ import '../services/notification_service.dart';
 import '../widgets/monthly_calendar_card.dart';
 
 class MedicationsScreen extends StatefulWidget {
-  const MedicationsScreen({super.key, this.embedded = false});
+  const MedicationsScreen({super.key, this.embedded = false, this.focusId});
 
   final bool embedded;
+
+  /// Bildirim payload'ından gelen odaklanılacak öğe id'si
+  final int? focusId;
 
   @override
   State<MedicationsScreen> createState() => _MedicationsScreenState();
@@ -23,6 +28,8 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
   double? _completionRate;
   Set<int> _scheduledDays = {};
   Set<int> _completedDays = {};
+  bool _focusVisible = true;
+  Timer? _focusTimer;
 
   @override
   void initState() {
@@ -33,6 +40,17 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
     AppTheme.loadGender().then((g) {
       if (mounted) setState(() => _gender = g);
     });
+    if (widget.focusId != null) {
+      _focusTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _focusVisible = false);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadMonthDays() async {
@@ -197,6 +215,8 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
     return {1, 2, 3, 4, 5, 6, 7};
   }
 
+  bool _isFocused(int id) => _focusVisible && widget.focusId == id;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -237,22 +257,61 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                   ),
                   const SizedBox(height: 16),
                   if (_medications.isEmpty)
-                    _buildEmptyState()
+                    _api.groupFailed('medications')
+                        ? _buildConnectionError()
+                        : _buildEmptyState()
                   else
                     for (final medication in _medications)
-                      ListTile(
-                        leading: const Icon(Icons.medication, color: Colors.red),
-                        title: Text(medication.name),
-                        subtitle: Text(
-                            '${medication.dosage ?? ""} - ⏰ ${medication.reminderTime}'),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () => _showDeleteDialog(medication),
+                      Card(
+                        color: _isFocused(medication.id)
+                            ? AppTheme.of(_gender).withValues(alpha: 0.15)
+                            : null,
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          leading: const Icon(Icons.medication, color: Colors.red),
+                          title: Text(medication.name),
+                          subtitle: Text(
+                              '${medication.dosage ?? ""} - ⏰ ${medication.reminderTime}'),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () => _showDeleteDialog(medication),
+                          ),
                         ),
                       ),
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _buildConnectionError() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 40),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.cloud_off, size: 64, color: Colors.orange),
+          const SizedBox(height: 16),
+          const Text(
+            'Sunucuya bağlanılamadı',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Liste yüklenemedi. Bağlantını kontrol edip yeniden dene.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: _loadMedications,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Yeniden Dene'),
+          ),
+        ],
+      ),
     );
   }
 

@@ -14,8 +14,9 @@ import 'notification_service.dart';
 /// with a persistent low-importance notification, which prevents the
 /// OS from killing the process.
 ///
-/// Periodically checks that scheduled alarms are still active and
-/// re-schedules any that may have been lost.
+/// The service itself does not re-schedule alarms; scheduled alarms
+/// are managed by flutter_local_notifications (with its boot receiver
+/// restoring them after reboot). This service only keeps the process alive.
 @pragma('vm:entry-point')
 class ForegroundService {
   static const int _notificationId = 1001;
