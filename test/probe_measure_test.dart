@@ -62,7 +62,10 @@ Future<Object?> disposeWhileLoading(WidgetTester tester) async {
   } catch (e) {
     error = e;
   }
-  return error ?? tester.takeException();
+  // ÖNEMLİ: pending exception her zaman drenajlanmalı; aksi halde test
+  // beklentiden bağımsız olarak teardown'da düşer (ilk ölçümde olan buydu).
+  final pending = tester.takeException();
+  return error ?? pending;
 }
 
 void main() {
