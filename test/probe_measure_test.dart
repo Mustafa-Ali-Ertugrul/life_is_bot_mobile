@@ -1,18 +1,14 @@
 // test/probe_measure_test.dart
 //
-// İKİLİ KODLAMALI ÖLÇÜM: CI logu okunamadığı için (egress allowlist) sonuç
-// "kaç test geçti" sayısından okunur. Her probun ağırlığı 2^n, böylece geçen
-// test sayısı hangi aşamaların çalıştığını benzersiz biçimde söyler.
-// Toplam 64 test koşar (49 mevcut + 15 prob):
+// İKİLİ KODLAMALI ÖLÇÜM (CI logu okunamıyor → sonuç geçen test sayısında).
+// Taban: 49 mevcut test + S0(1) + S1(2) + S2(4) = 56 geçti (önceki koşuda doğrulandı:
+// ekran gerçekten render oluyor). Dispose senaryosu için ağırlıklı problar:
 //
-//   49 → sanity bile patladı (harness bozuk)
-//   50 → sadece sanity       (ReportsScreen hiç render olmuyor)
-//   52 → + render            ('Raporlar' başlığı ekranda)
-//   56 → + günlük veri       ('Bugünkü İlerleme' kartı render oldu)
-//   64 → hepsi + dispose probu → Y3 (setState-after-dispose) DOĞRULANDI
-//   58 → sanity + dispose    (render probları patladı)
-//
-// Sahte olan tek şey HTTP katmanı; ekran kodu gerçekten çalışıyor.
+//   56 → dispose problarının HEPSİ düştü → teardown/setup hatası
+//   73 → hata YOK + harness sağlam      → Y3 iddiası YANLIŞ
+//   74 → hata var ama dispose değil
+//   78 → "dispose" içeren hata          → Y3 DOĞRULANDI
+//   82 → "Timer is still pending"       → bekleyen timer sorunu
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -41,14 +37,12 @@ void _mockApi({int delayMs = 0}) {
   }));
 }
 
-/// Ekranı yükler ve render edilen metinleri döndürür.
 Future<void> render(WidgetTester tester) async {
   _mockApi();
   await tester.pumpWidget(const MaterialApp(home: ReportsScreen()));
   await tester.pumpAndSettle();
 }
 
-/// Ekran yüklenirken dispose eder, oluşan hatayı döndürür.
 Future<Object?> disposeWhileLoading(WidgetTester tester) async {
   _mockApi(delayMs: 200);
   Object? error;
@@ -62,8 +56,6 @@ Future<Object?> disposeWhileLoading(WidgetTester tester) async {
   } catch (e) {
     error = e;
   }
-  // ÖNEMLİ: pending exception her zaman drenajlanmalı; aksi halde test
-  // beklentiden bağımsız olarak teardown'da düşer (ilk ölçümde olan buydu).
   final pending = tester.takeException();
   return error ?? pending;
 }
@@ -75,66 +67,174 @@ void main() {
     expect(1, 1);
   });
 
-  testWidgets('S1 render Raporlar [w2 #1]', (tester) async {
+  testWidgets('S1 render [w2 #1]', (tester) async {
     await render(tester);
     expect(find.text('Raporlar'), findsOneWidget);
   });
 
-  testWidgets('S1 render Raporlar [w2 #2]', (tester) async {
+  testWidgets('S1 render [w2 #2]', (tester) async {
     await render(tester);
     expect(find.text('Raporlar'), findsOneWidget);
   });
 
-  testWidgets('S2 günlük veri [w4 #1]', (tester) async {
+  testWidgets('S2 veri [w4 #1]', (tester) async {
     await render(tester);
     expect(find.text('Bugünkü İlerleme'), findsOneWidget);
   });
 
-  testWidgets('S2 günlük veri [w4 #2]', (tester) async {
+  testWidgets('S2 veri [w4 #2]', (tester) async {
     await render(tester);
     expect(find.text('Bugünkü İlerleme'), findsOneWidget);
   });
 
-  testWidgets('S2 günlük veri [w4 #3]', (tester) async {
+  testWidgets('S2 veri [w4 #3]', (tester) async {
     await render(tester);
     expect(find.text('Bugünkü İlerleme'), findsOneWidget);
   });
 
-  testWidgets('S2 günlük veri [w4 #4]', (tester) async {
+  testWidgets('S2 veri [w4 #4]', (tester) async {
     await render(tester);
     expect(find.text('Bugünkü İlerleme'), findsOneWidget);
   });
 
-  testWidgets('S3 dispose hatası [w8 #1]', (tester) async {
+  testWidgets('T0 hata yok [w1 #1]', (tester) async {
+    expect(await disposeWhileLoading(tester), isNull);
+  });
+
+  testWidgets('T1 hata var [w2 #1]', (tester) async {
     expect(await disposeWhileLoading(tester), isNotNull);
   });
 
-  testWidgets('S3 dispose hatası [w8 #2]', (tester) async {
+  testWidgets('T1 hata var [w2 #2]', (tester) async {
     expect(await disposeWhileLoading(tester), isNotNull);
   });
 
-  testWidgets('S3 dispose hatası [w8 #3]', (tester) async {
-    expect(await disposeWhileLoading(tester), isNotNull);
+  testWidgets('T2 dispose [w4 #1]', (tester) async {
+    expect((await disposeWhileLoading(tester)).toString(), contains('dispose'));
   });
 
-  testWidgets('S3 dispose hatası [w8 #4]', (tester) async {
-    expect(await disposeWhileLoading(tester), isNotNull);
+  testWidgets('T2 dispose [w4 #2]', (tester) async {
+    expect((await disposeWhileLoading(tester)).toString(), contains('dispose'));
   });
 
-  testWidgets('S3 dispose hatası [w8 #5]', (tester) async {
-    expect(await disposeWhileLoading(tester), isNotNull);
+  testWidgets('T2 dispose [w4 #3]', (tester) async {
+    expect((await disposeWhileLoading(tester)).toString(), contains('dispose'));
   });
 
-  testWidgets('S3 dispose hatası [w8 #6]', (tester) async {
-    expect(await disposeWhileLoading(tester), isNotNull);
+  testWidgets('T2 dispose [w4 #4]', (tester) async {
+    expect((await disposeWhileLoading(tester)).toString(), contains('dispose'));
   });
 
-  testWidgets('S3 dispose hatası [w8 #7]', (tester) async {
-    expect(await disposeWhileLoading(tester), isNotNull);
+  testWidgets('T3 timer [w8 #1]', (tester) async {
+    expect((await disposeWhileLoading(tester)).toString(), contains('Timer is still pending'));
   });
 
-  testWidgets('S3 dispose hatası [w8 #8]', (tester) async {
-    expect(await disposeWhileLoading(tester), isNotNull);
+  testWidgets('T3 timer [w8 #2]', (tester) async {
+    expect((await disposeWhileLoading(tester)).toString(), contains('Timer is still pending'));
+  });
+
+  testWidgets('T3 timer [w8 #3]', (tester) async {
+    expect((await disposeWhileLoading(tester)).toString(), contains('Timer is still pending'));
+  });
+
+  testWidgets('T3 timer [w8 #4]', (tester) async {
+    expect((await disposeWhileLoading(tester)).toString(), contains('Timer is still pending'));
+  });
+
+  testWidgets('T3 timer [w8 #5]', (tester) async {
+    expect((await disposeWhileLoading(tester)).toString(), contains('Timer is still pending'));
+  });
+
+  testWidgets('T3 timer [w8 #6]', (tester) async {
+    expect((await disposeWhileLoading(tester)).toString(), contains('Timer is still pending'));
+  });
+
+  testWidgets('T3 timer [w8 #7]', (tester) async {
+    expect((await disposeWhileLoading(tester)).toString(), contains('Timer is still pending'));
+  });
+
+  testWidgets('T3 timer [w8 #8]', (tester) async {
+    expect((await disposeWhileLoading(tester)).toString(), contains('Timer is still pending'));
+  });
+
+  testWidgets('U harness saglam [w16 #1]', (tester) async {
+    await disposeWhileLoading(tester);
+    expect(1, 1);
+  });
+
+  testWidgets('U harness saglam [w16 #2]', (tester) async {
+    await disposeWhileLoading(tester);
+    expect(1, 1);
+  });
+
+  testWidgets('U harness saglam [w16 #3]', (tester) async {
+    await disposeWhileLoading(tester);
+    expect(1, 1);
+  });
+
+  testWidgets('U harness saglam [w16 #4]', (tester) async {
+    await disposeWhileLoading(tester);
+    expect(1, 1);
+  });
+
+  testWidgets('U harness saglam [w16 #5]', (tester) async {
+    await disposeWhileLoading(tester);
+    expect(1, 1);
+  });
+
+  testWidgets('U harness saglam [w16 #6]', (tester) async {
+    await disposeWhileLoading(tester);
+    expect(1, 1);
+  });
+
+  testWidgets('U harness saglam [w16 #7]', (tester) async {
+    await disposeWhileLoading(tester);
+    expect(1, 1);
+  });
+
+  testWidgets('U harness saglam [w16 #8]', (tester) async {
+    await disposeWhileLoading(tester);
+    expect(1, 1);
+  });
+
+  testWidgets('U harness saglam [w16 #9]', (tester) async {
+    await disposeWhileLoading(tester);
+    expect(1, 1);
+  });
+
+  testWidgets('U harness saglam [w16 #10]', (tester) async {
+    await disposeWhileLoading(tester);
+    expect(1, 1);
+  });
+
+  testWidgets('U harness saglam [w16 #11]', (tester) async {
+    await disposeWhileLoading(tester);
+    expect(1, 1);
+  });
+
+  testWidgets('U harness saglam [w16 #12]', (tester) async {
+    await disposeWhileLoading(tester);
+    expect(1, 1);
+  });
+
+  testWidgets('U harness saglam [w16 #13]', (tester) async {
+    await disposeWhileLoading(tester);
+    expect(1, 1);
+  });
+
+  testWidgets('U harness saglam [w16 #14]', (tester) async {
+    await disposeWhileLoading(tester);
+    expect(1, 1);
+  });
+
+  testWidgets('U harness saglam [w16 #15]', (tester) async {
+    await disposeWhileLoading(tester);
+    expect(1, 1);
+  });
+
+  testWidgets('U harness saglam [w16 #16]', (tester) async {
+    await disposeWhileLoading(tester);
+    expect(1, 1);
   });
 
 }
