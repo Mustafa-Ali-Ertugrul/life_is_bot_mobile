@@ -7,7 +7,29 @@
 
 ## 1. Nasıl inceledim (ve neyi doğrulayamadım)
 
-Bu sandbox'ta **Flutter/Dart SDK yok** (`which flutter dart` → boş) ve **pub.dev / storage.googleapis.com erişilemiyor** (curl → exit 35, SSL hatası). Bu yüzden `flutter analyze`, `flutter test` ve `flutter build apk` **burada çalıştırılamadı** — testlerin geçip geçmediği bu ortamda doğrulanmadı; o işi `ci.yml` yapıyor.
+Bu sandbox'ta **Flutter/Dart SDK kurulamıyor** — nedenleri tek tek denendi ve kanıtlandı:
+
+| Yol | Sonuç |
+|---|---|
+| SDK dosya sisteminde hazır mı | `find / -name dart -o -name flutter` → sadece projenin `linux/flutter`, `windows/flutter` klasörleri |
+| `pub.dev` | TLS ClientHello'dan sonra proxy düşürüyor: `SSL_ERROR_SYSCALL` (curl 35) |
+| `storage.googleapis.com` (Flutter/Dart SDK indirme) | Aynı şekilde engelli |
+| GitHub release asset'leri | `objects.githubusercontent.com`'a 302 → host erişilemez, 0 byte |
+| `codeload.github.com` (kaynak tarball) | 200, ama Flutter kaynağı Dart SDK binary'sini içermez; onu ilk çalıştırmada storage.googleapis.com'dan indirir |
+| npm / PyPI mirror | `dart-sdk`, `flutter-sdk` paketi yok |
+
+**Çözüm:** projenin kendi koşucusu olan `mobile-ci` workflow'u tetiklendi (PR #3, run [34937411514](https://github.com/Mustafa-Ali-Ertugrul/life_is_bot_mobile/actions/runs/34937411514)). Sonuç — **kod gerçekten derlendi ve testler gerçekten koştu**:
+
+```
+job: analyze-and-test → success  (06:32:44Z → 06:34:06Z, 1m22s)
+  3. Setup Flutter: success   4. Pub dependencies: success
+  5. Analyze: success         (flutter analyze --fatal-infos)
+  6. Test: success            (flutter test)
+```
+
+Yani: **analyzer temiz** (`--fatal-infos` ile, yani tek bir info bile olsa kırmızı olurdu) ve **49 test case'in tamamı geçti** (`api_client_sport_supplement` 14, `sport_supplement_contract` 15, `app_navigator_payload` 8, `auth_retry_regression` 8, `model_contract` 4). Adım sonuçları `api.github.com`'dan doğrulandı; ham log metni ise `results-receiver.actions.githubusercontent.com` / `blob.core.windows.net` allowlist dışında kaldığı için buradan okunamıyor.
+
+**Koşturulamayan tek şey uygulamanın kendisi:** `flutter build apk` Android SDK + Gradle + `repo1.maven.org`/`dl.google.com`/`services.gradle.org` gerektiriyor (üçü de engelli) ve sandbox'ta ne emülatör ne backend var. Aşağıdaki bulguların tamamı bu yüzden statik; K1/K3/Y1/Y2 gibi maddeler cihazda doğrulanmadı.
 
 Bunun yerine kod üzerinde **çalıştırılabilir statik kontroller** yaptım (Python ile `lib/` tarandı) ve her bulguyu dosya:satır ile doğruladım:
 
