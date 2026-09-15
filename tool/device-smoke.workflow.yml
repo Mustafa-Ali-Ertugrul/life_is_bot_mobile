@@ -1,0 +1,111 @@
+# NOT: GitHub App token'inda `workflows` izni olmadigi icin bu dosya
+# .github/workflows/ altina agent tarafindan push'LANAMIYOR.
+# Calistirmak icin:  cp tool/device-smoke.workflow.yml .github/workflows/device-smoke.yml
+# sonra push → PR üzerinde emülatör smoke testi koşar ve sonucu PR'a yazar.
+name: device-smoke
+
+# Uygulamayı GERÇEK bir Android emülatöründe çalıştırır; birim test değil.
+# debug + release APK kurulur, sekmelerde gezilir, ekran dökümü/logcat/alarm
+# durumu toplanır ve sonuç PR'a yorum olarak yazılır.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: device-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.29.0
+          channel: stable
+          cache: true
+
+      - name: Bağımlılıklar
+        run: flutter pub get
+
+      - name: Mock backend'i başlat
+        run: |
+          nohup python3 tool/mock_backend.py > /tmp/mock_backend.log 2>&1 &
+          sleep 3
+          echo "health → $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/health)"
+          curl -s http://127.0.0.1:8080/api/medications | head -c 200; echo
+
+      - name: Debug APK derle
+        run: |
+          flutter build apk --debug \
+            --dart-define=API_BASE_URL=http://10.0.2.2:8080/api \
+            --dart-define=PROVISIONING_KEY=smoke-test-key
+          ls -lh build/app/outputs/flutter-apk/
+
+      - name: Release APK derle (key.properties yok → debug imza ile çıkar)
+        run: |
+          flutter build apk --release \
+            --dart-define=API_BASE_URL=http://10.0.2.2:8080/api \
+            --dart-define=PROVISIONING_KEY=smoke-test-key
+          ls -lh build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Emülatörde çalıştır (debug + release)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          heap-size: 2048M
+          disk-size: 6G
+          script: |
+            SMOKE_PHASE=debug   bash tool/device_smoke.sh
+            cp /tmp/mock_backend.log /tmp/mock_backend_debug.log
+            : > /tmp/mock_backend.log
+            SMOKE_PHASE=release bash tool/device_smoke.sh
+
+      - name: Sonuçları PR'a yaz
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "## 🤖 Cihaz smoke testi — gerçek emülatör çıktısı"
+            echo
+            echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            for phase in debug release; do
+              if [ -f "/tmp/smoke/$phase/report.txt" ]; then
+                echo "<details><summary><b>PHASE: $phase</b> — tam rapor</summary>"
+                echo
+                echo '```'
+                cat "/tmp/smoke/$phase/report.txt"
+                echo '```'
+                echo "</details>"
+                echo
+              else
+                echo "**PHASE $phase: rapor üretilemedi** (emülatör adımı başarısız olabilir)"
+                echo
+              fi
+            done
+          } > /tmp/comment.md
+          # PR yorum sınırı 65536 karakter
+          head -c 60000 /tmp/comment.md > /tmp/comment_trim.md
+          if [ -n "${PR:-}" ]; then
+            gh pr comment "$PR" --body-file /tmp/comment_trim.md
+          else
+            cat /tmp/comment_trim.md
+          fi
