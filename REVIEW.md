@@ -62,6 +62,32 @@ bash tool/device_smoke.sh                            # kur, gez, ekran dökümü
 
 Bu harness soğuk açılışta **gerçekte kaç HTTP isteği atıldığını da sayıyor** (mock backend istek günlüğü) — Y4 iddiasının cihazda ölçümü.
 
+---
+
+## 1c. Canlı yerine: gerçek backend kaynak koduna karşı sözleşme denetimi
+
+Uygulama **canlıda test edilmedi** (cihaz/APK yok; ayrıca repoda canlı adres de yok — tek URL `http://10.0.2.2:8080/api`, yani emülatörün host loopback'i; gerçek adres build sırasında `--dart-define=API_BASE_URL` ile gömülüyor). Onun yerine istemcinin beklediği sözleşme, backend'in **gerçek kaynak koduyla** karşılaştırıldı: `Mustafa-Ali-Ertugrul/Life_Is_Bot`, `API_VERSION = "0.36.0"` (`app/api/__init__.py:1`).
+
+**Uyuşanlar (doğrulandı):**
+
+| Konu | Backend | Mobil | Sonuç |
+|---|---|---|---|
+| Route prefix | `APIRouter(prefix="/api/...")` (`app/api/routers/*.py`) | `baseUrl` sonu `/api` | ✓ |
+| `/api/health` | auth gerektirmiyor, `/health` + `/api/health` ikisi de var | tokensiz GET | ✓ |
+| `/api/auth/token` | `X-Provisioning-Key` header, geçersizse 401, `access_token` döner | aynı | ✓ |
+| Liste yanıtı | `PaginatedResponse{items,total,limit,offset}` | `items`/`total` okuyor | ✓ |
+| `related_type` | `habit`, `medication_plan`, `sport_plan`, `supplement_plan` (`app/modules/*.py`) | birebir aynı 4 değer | ✓ |
+| `response` tipleri | `_MOBILE_RESPONSES = {taken, not_taken, done, not_done, skipped}` | `taken/not_taken/done/not_done` | ✓ |
+| Durum kodları | POST 201, DELETE 204 | 200/201 ve 200/204 kabul | ✓ |
+| Alan adları | `MedicationResponse`/`HabitResponse`/`SportResponse`/`SupplementResponse` | `fromJson` aynı anahtarlar | ✓ |
+| Supplement oluşturma | `with_food` varsayılanlı (`default="any"`) | göndermiyor → 422 olmaz | ✓ |
+
+**Denetimde çıkan iki somut sorun:**
+
+1. **Y5 artık sayıyla doğrulandı — liste 50 kayıtta sessizce kesiliyor.** `app/api/deps.py:28`: `limit: Annotated[int, Query(ge=1, le=100)] = 50`. Mobil hiçbir liste çağrısında `limit`/`offset` göndermiyor (`api_client.dart:168`, `:235`, `:322`, `:389`) → **51. kayıt ve sonrası ekranda hiç görünmez** ve kullanıcıya hiçbir uyarı verilmez. Tavan da 100 olduğu için `limit=1000` çözüm değil; ya sayfalama gezilmeli ya da backend'e "hepsini ver" yolu eklenmeli.
+2. **`updateHabit` yanlış HTTP metodu kullanıyor.** Mobil `PUT /api/habits/{id}` (`api_client.dart:283`), backend'de habits için yalnızca `GET/PATCH/DELETE` var (`app/api/routers/habits.py:71` → `@router.patch`) → çağrılsa **405** döner. Şu an kullanıcı etkisi yok çünkü `updateHabit` **ölü kod**: repoda yalnızca tanımı var, hiçbir ekrandan çağrılmıyor (`grep -rn updateHabit lib/ test/` → tek satır). Rutin düzenleme özelliği eklenmeden önce `PATCH`'e çevrilmeli.
+
+
 
 Bunun yerine kod üzerinde **çalıştırılabilir statik kontroller** yaptım (Python ile `lib/` tarandı) ve her bulguyu dosya:satır ile doğruladım:
 
@@ -148,7 +174,7 @@ Karşı örnek doğru yazılmış: `lib/screens/sport_screen.dart:166` (`if (mou
 `getMonthlyReport()` dört ayrı ekrandan çağrılıyor: `habits_screen.dart:83`, `medications_screen.dart:82`, `sport_screen.dart:111`, `reports_screen.dart:49`. HomeScreen ayrıca `checkHealth` + 7 paralel çağrı yapıyor (`home_screen.dart:120-128`), sekmeler de kendi listelerini + `getMonthDays`'i çekiyor. Cache/repository katmanı yok.
 → *Öneri:* basit bir `Repository` + TTL cache (veya provider/riverpod) ile tek kaynak; ay raporu bir kez çekilip paylaşılabilir.
 
-**Y5 — Listeleme endpoint'lerine sayfalama parametresi gönderilmiyor**
+**Y5 — Listeleme endpoint'lerine sayfalama parametresi gönderilmiyor** ✅ *backend kaynağıyla doğrulandı: varsayılan limit 50 (bkz. §1c)*
 `getMedications/getHabits/getSportPlans/getSupplementPlans` yanıtları `{"items": [...], "total": N}` biçiminde ayrıştırıyor (`api_client.dart:168-186` vb.) ama isteklerde `page`/`limit` yok. Backend varsayılan sayfa boyutuyla dönerse uygulama **sessizce ilk sayfayı** gösterir.
 → *Öneri:* backend sözleşmesini netleştir; `?limit=` gönder ya da `total > items.length` ise uyar.
 
