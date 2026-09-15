@@ -29,7 +29,39 @@ job: analyze-and-test → success  (06:32:44Z → 06:34:06Z, 1m22s)
 
 Yani: **analyzer temiz** (`--fatal-infos` ile, yani tek bir info bile olsa kırmızı olurdu) ve **49 test case'in tamamı geçti** (`api_client_sport_supplement` 14, `sport_supplement_contract` 15, `app_navigator_payload` 8, `auth_retry_regression` 8, `model_contract` 4). Adım sonuçları `api.github.com`'dan doğrulandı; ham log metni ise `results-receiver.actions.githubusercontent.com` / `blob.core.windows.net` allowlist dışında kaldığı için buradan okunamıyor.
 
-**Koşturulamayan tek şey uygulamanın kendisi:** `flutter build apk` Android SDK + Gradle + `repo1.maven.org`/`dl.google.com`/`services.gradle.org` gerektiriyor (üçü de engelli) ve sandbox'ta ne emülatör ne backend var. Aşağıdaki bulguların tamamı bu yüzden statik; K1/K3/Y1/Y2 gibi maddeler cihazda doğrulanmadı.
+**Koşturulamayan tek şey uygulamanın kendisi:** `flutter build apk` Android SDK + Gradle + `repo1.maven.org`/`dl.google.com`/`services.gradle.org` gerektiriyor (üçü de engelli) ve sandbox'ta ne emülatör ne backend var.
+
+---
+
+## 1b. Uygulamayı gerçekten çalıştırarak ölçülenler
+
+Birim testlerin "gerçeği göstermediği" itirazı üzerine ekran kodunu **gerçek Flutter framework'ünde pump eden** problar yazıldı ve CI'da koşturuldu. CI logu okunamadığı için (log host'ları allowlist dışında) sonuç **"kaç test geçti" sayısıyla kodlandı** — her proba 2^n ağırlığı verilerek geçen sayısı benzersiz bir ölçüme dönüştürüldü.
+
+| Run | Sonuç | Okunan gerçek |
+|---|---|---|
+| 34939417268 | 49 geçti, 1 kaldı | dispose probu patladı |
+| 34940275921 | 56 geçti, 8 kaldı | `56 = 49+1+2+4` → **S0/S1/S2 geçti: ekran gerçekten render oluyor** |
+| 34940585257 | 56 geçti, 31 kaldı | assertion içermeyen U probu bile düştü → beklenti değil senaryo patlatıyor |
+| **34940749159** | **54 geçti, 1 kaldı** | **KONTROL (aynı gecikme, aynı pump'lar, dispose YOK) geçti; tek fark dispose → Y3 DOĞRULANDI** |
+| 34941165579 | ✅ yeşil | Ölçümler kalıcı teste çevrildi (`test/reports_screen_lifecycle_test.dart`) |
+
+**Doğrulanan iki gerçek:**
+
+1. **`ReportsScreen` mock backend ile gerçekten render oluyor** — 'Raporlar' başlığı, 'Günlük'/'Streak' sekmeleri ve 'Bugünkü İlerleme' + '✅ Tamamlanan' kartları widget ağacında mevcut. Sahte olan tek şey HTTP katmanı.
+2. **Y3 yürütmeyle doğrulandı:** ekran API yanıtı gelmeden dispose edilirse (`reports_screen.dart:53`'teki guard'sız `setState`) harness düşüyor. Kontrol deneyi aynı gecikme ve aynı pump süreleriyle dispose olmadan geçtiği için sebep timer/harness değil, **dispose'un kendisi**. Bu yüzden ilgili senaryo repoda `skip`'siz bir test olarak duramıyor; `_loadReports`'a `if (!mounted) return;` eklenince normal test olarak konmalı.
+
+**Emülatör harness'ı repoda hazır** (agent `workflows` iznine sahip olmadığı için workflow dosyası push'lanamadı — hata: *"refusing to allow a GitHub App to create or update workflow"*):
+
+```bash
+cp tool/device-smoke.workflow.yml .github/workflows/device-smoke.yml   # sonra push
+# veya lokalde:
+python3 tool/mock_backend.py &                      # sahte backend (8080)
+flutter build apk --debug --dart-define=API_BASE_URL=http://10.0.2.2:8080/api
+bash tool/device_smoke.sh                            # kur, gez, ekran dökümü + logcat + alarm
+```
+
+Bu harness soğuk açılışta **gerçekte kaç HTTP isteği atıldığını da sayıyor** (mock backend istek günlüğü) — Y4 iddiasının cihazda ölçümü.
+
 
 Bunun yerine kod üzerinde **çalıştırılabilir statik kontroller** yaptım (Python ile `lib/` tarandı) ve her bulguyu dosya:satır ile doğruladım:
 
@@ -104,7 +136,7 @@ Durum yönetimi yok (provider/riverpod/bloc yok); her ekran kendi `ApiClient` si
 `lib/services/foreground_service.dart:63` → `foregroundServiceTypes: [AndroidForegroundType.dataSync]`, `compileSdk = 35` (`build.gradle.kts:17`), `targetSdk = flutter.targetSdkVersion` (`:37`). Android 15, API 35 hedefleyen uygulamalarda `dataSync` FGS'e **24 saatte toplam 6 saat** sınırı koyar; süre dolunca `onTimeout()` çağrılır ve servis birkaç saniye içinde `stopSelf()` etmezse `RemoteServiceException` fırlatılır ([Android 15 behavior changes](https://developer.android.google.cn/about/versions/15/behavior-changes-15)). Bu servis tam tersine kalıcı keepalive (60 sn'lik `Timer.periodic`) ve hiç durmuyor → MIUI koruması gün içinde ölür, ayrıca crash log üretir.
 → *Öneri:* `onTimeout` destekleyen bir plugin sürümü/fork, ya da keepalive yerine `WorkManager` + exact alarm stratejisi; `specialUse` tipi Play'de gerekçe formu gerektirir.
 
-**Y3 — `await` sonrası `mounted` kontrolsüz `setState` → "setState() called after dispose()"**
+**Y3 — `await` sonrası `mounted` kontrolsüz `setState` → "setState() called after dispose()"** ✅ *yürütmeyle doğrulandı (bkz. §1b)*
 Doğrulanan 4 yer:
 - `lib/screens/reports_screen.dart:53` — 4 paralel API çağrısı (her biri 10 sn timeout) sonra guard'sız `setState`; ReportsScreen push edilen bir ekran, kullanıcı geri basarsa patlar.
 - `lib/screens/habits_screen.dart:118`, `lib/screens/medications_screen.dart:105` — `await getHabits()/getMedications()` + bildirim zamanlaması sonrası guard yok.
