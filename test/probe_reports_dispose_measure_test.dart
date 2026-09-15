@@ -1,16 +1,18 @@
 // test/probe_reports_dispose_measure_test.dart
 //
-// ÖLÇÜM DÜZENEĞİ (review Y3): ReportsScreen API yanıtı gelmeden dispose edilince
-// GERÇEKTEN ne oluyor? CI logunu okuyamadığımız için (egress allowlist) sonucu
-// "kaç test geçti" sayısından çıkarıyoruz:
+// OLÇÜM DÜZENEĞİ (review Y3): ReportsScreen API yanıtı gelmeden dispose edilince
+// GERÇEKTEN ne oluyor? CI logu okunamadığı için (egress allowlist) sonuç
+// "kaç test geçti" sayısından okunur. R1/R2 birbirinin tersi → taban +1.
+// Alt dize probları ağırlıklıdır, böylece her senaryo benzersiz bir toplam verir:
 //
-// Toplam 55 test koşar (49 mevcut + 6 prob). Geçen sayısından sonuç:
-//   50 geçti → sadece P1 → hiç hata yok  (Y3 iddiası YANLIŞ, ekran güvenli)
-//   51 geçti → P2+P3     → başka bir hata var
-//   52 geçti → +P6       → "Null check operator" hatası
-//   53 geçti → +P4+P5    → "setState() called after dispose()" (Y3 DOĞRULANDI)
+//   50 geçti → hata yok                        → Y3 iddiası YANLIŞ
+//   51 geçti → "called after dispose" (ağırlık 1) → Y3 DOĞRULANDI
+//   52 geçti → "during build"        (ağırlık 2)
+//   53 geçti → "Timer is still pending" (ağırlık 3)
+//   54 geçti → "Null check"          (ağırlık 4)
+//   55 geçti → "MissingPluginException" (ağırlık 5)
+//   49 geçti → probların kendisi düşüyor (setup hatası)
 //
-// 6 probun her biri aynı senaryoyu bağımsız koşar ve tek bir koşulu dener.
 // Gerçek ReportsScreen pump ediliyor; sahte olan tek şey HTTP katmanı.
 import 'dart:convert';
 
@@ -23,7 +25,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:life_is_bot/core/api_client.dart';
 import 'package:life_is_bot/screens/reports_screen.dart';
 
-/// Senaryoyu koşar ve oluşan hatayı (yoksa null) döndürür.
 Future<Object?> runScenario(WidgetTester tester) async {
   SharedPreferences.setMockInitialValues({'user_gender': 'male'});
 
@@ -45,13 +46,13 @@ Future<Object?> runScenario(WidgetTester tester) async {
   Object? error;
   try {
     await tester.pumpWidget(const MaterialApp(home: ReportsScreen()));
-    await tester.pump(const Duration(milliseconds: 20)); // istekler uçuşta
-    // kullanıcı geri bastı → ekran dispose, istekler hâlâ bekliyor
+    await tester.pump(const Duration(milliseconds: 20));
     await tester.pumpWidget(const MaterialApp(home: SizedBox()));
-    await tester.pump(const Duration(milliseconds: 500)); // yanıtlar iner
-    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(seconds: 12)); // .timeout() timer'ları bitsin
+    await tester.pump();
   } catch (e) {
-    error = e; // pump sırasında doğrudan fırladıysa
+    error = e;
   }
   return error ?? tester.takeException();
 }
@@ -59,30 +60,72 @@ Future<Object?> runScenario(WidgetTester tester) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('P1: hiç hata oluşmadı', (tester) async {
+  testWidgets('R1: hata yok', (tester) async {
     expect(await runScenario(tester), isNull);
   });
 
-  testWidgets('P2: bir hata oluştu', (tester) async {
+  testWidgets('R2: hata var', (tester) async {
     expect(await runScenario(tester), isNotNull);
   });
 
-  testWidgets('P3: hata bir daha oluştu (ağırlık)', (tester) async {
-    expect(await runScenario(tester), isNotNull);
+  testWidgets('W[called after dispose x1] #1', (tester) async {
+    expect((await runScenario(tester)).toString(), contains('called after dispose'));
   });
 
-  testWidgets('P4: mesaj "setState" içeriyor', (tester) async {
-    final e = await runScenario(tester);
-    expect(e.toString(), contains('setState'));
+  testWidgets('W[during build x2] #1', (tester) async {
+    expect((await runScenario(tester)).toString(), contains('during build'));
   });
 
-  testWidgets('P5: mesaj "dispose" içeriyor', (tester) async {
-    final e = await runScenario(tester);
-    expect(e.toString(), contains('dispose'));
+  testWidgets('W[during build x2] #2', (tester) async {
+    expect((await runScenario(tester)).toString(), contains('during build'));
   });
 
-  testWidgets('P6: mesaj "Null check" içeriyor', (tester) async {
-    final e = await runScenario(tester);
-    expect(e.toString(), contains('Null check'));
+  testWidgets('W[Timer is still pending x3] #1', (tester) async {
+    expect((await runScenario(tester)).toString(), contains('Timer is still pending'));
   });
+
+  testWidgets('W[Timer is still pending x3] #2', (tester) async {
+    expect((await runScenario(tester)).toString(), contains('Timer is still pending'));
+  });
+
+  testWidgets('W[Timer is still pending x3] #3', (tester) async {
+    expect((await runScenario(tester)).toString(), contains('Timer is still pending'));
+  });
+
+  testWidgets('W[Null check x4] #1', (tester) async {
+    expect((await runScenario(tester)).toString(), contains('Null check'));
+  });
+
+  testWidgets('W[Null check x4] #2', (tester) async {
+    expect((await runScenario(tester)).toString(), contains('Null check'));
+  });
+
+  testWidgets('W[Null check x4] #3', (tester) async {
+    expect((await runScenario(tester)).toString(), contains('Null check'));
+  });
+
+  testWidgets('W[Null check x4] #4', (tester) async {
+    expect((await runScenario(tester)).toString(), contains('Null check'));
+  });
+
+  testWidgets('W[MissingPluginException x5] #1', (tester) async {
+    expect((await runScenario(tester)).toString(), contains('MissingPluginException'));
+  });
+
+  testWidgets('W[MissingPluginException x5] #2', (tester) async {
+    expect((await runScenario(tester)).toString(), contains('MissingPluginException'));
+  });
+
+  testWidgets('W[MissingPluginException x5] #3', (tester) async {
+    expect((await runScenario(tester)).toString(), contains('MissingPluginException'));
+  });
+
+  testWidgets('W[MissingPluginException x5] #4', (tester) async {
+    expect((await runScenario(tester)).toString(), contains('MissingPluginException'));
+  });
+
+  testWidgets('W[MissingPluginException x5] #5', (tester) async {
+    expect((await runScenario(tester)).toString(), contains('MissingPluginException'));
+  });
+
 }
