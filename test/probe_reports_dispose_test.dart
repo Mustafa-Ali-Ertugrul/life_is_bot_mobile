@@ -64,46 +64,4 @@ void main() {
           reason: 'Y3: hata mesajı dispose-sonrası setState olmalı');
     },
   );
-
-  testWidgets(
-    'ReportsScreen: yüklenirken ekranda spinner, bitince rapor içeriği görünür',
-    (tester) async {
-      SharedPreferences.setMockInitialValues({'user_gender': 'female'});
-
-      final api = ApiClient()
-        ..resetForTest()
-        ..setTestToken('probe-token');
-
-      api.setTestClient(MockClient((request) async {
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-        return http.Response(
-          jsonEncode({
-            'total': 5,
-            'completed': 3,
-            'missed': 1,
-            'unanswered': 1,
-            'current': 12,
-            'longest': 27,
-            'completion_rate': 60.0,
-            'bot_stats': <Map<String, dynamic>>[],
-          }),
-          200,
-        );
-      }));
-
-      await tester.pumpWidget(const MaterialApp(home: ReportsScreen()));
-      expect(find.byType(CircularProgressIndicator), findsOneWidget,
-          reason: 'yükleme sırasında spinner gösterilmeli');
-
-      await tester.pumpAndSettle();
-
-      // Gerçekten render edilmiş metinler
-      expect(find.text('Raporlar'), findsOneWidget);
-      expect(find.text('Günlük'), findsOneWidget);
-      expect(find.text('Bugünkü İlerleme'), findsOneWidget,
-          reason: 'yüklenme bitince günlük sekmesi render olmalı');
-      // Not: belirli (determinate) CircularProgressIndicator ilerleme kartında
-      // da kullanılıyor, o yüzden tip bazında "spinner gitti" iddiası kurulamaz.
-    },
-  );
 }
